@@ -267,6 +267,18 @@ canvas#reserveCanvas {
     padding: 8px;
     border-radius: 8px;
     line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+}
+
+.card-thumb-img {
+    width: 36px;
+    height: 36px;
+    object-fit: contain;
+    image-rendering: pixelated;
 }
 
 .card-title-group h3 {
