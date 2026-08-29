@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>African Wildlife Reserve Manager</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="game-container">
+        <!-- Dashboard Header -->
+        <header class="dashboard-header">
+            <div class="title-bar">
+                <h1>🌍 Serengeti Wildlife Reserve</h1>
+                <div class="day-badge">Day <span id="stat-day">1</span></div>
+            </div>
+
+            <!-- Day Cycle Progress Bar (120s loop) -->
+            <div class="day-progress-container" title="Day Cycle Progress (2 Minutes)">
+                <div id="day-progress-bar" class="day-progress-fill"></div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <span class="stat-label">Funds</span>
+                    <span id="stat-funds" class="stat-value">$1,000</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Net Daily Income</span>
+                    <span id="stat-net-income" class="stat-value positive">+$0/day</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Animal Capacity</span>
+                    <span id="stat-capacity" class="stat-value">2 / 5</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Wood Resources</span>
+                    <span id="stat-wood" class="stat-value">20 Wood</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Camp Level</span>
+                    <span id="stat-camp-tier" class="stat-value">Tier 1</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Fence Security</span>
+                    <span id="stat-fence-tier" class="stat-value">Tier 1</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Central Map View -->
+        <section class="map-section">
+            <div class="map-header">
+                <h2>🗺️ Reserve Tactical View</h2>
+                <span id="map-status" style="font-size: 0.85rem; color: #95a5a6;">Status: Operational</span>
+            </div>
+            <div class="map-canvas-container">
+                <canvas id="reserveCanvas" width="800" height="450"></canvas>
+            </div>
+        </section>
+
+        <!-- Bottom Management Navigation & Panels -->
+        <section class="management-section">
+            <nav class="tab-navigation">
+                <button class="tab-btn active" data-tab="tab-animals">
+                    <span>🦁</span> Animal Market
+                </button>
+                <button class="tab-btn" data-tab="tab-rangers">
+                    <span>🤠</span> Ranger Staff
+                </button>
+                <button class="tab-btn" data-tab="tab-upgrades">
+                    <span>🏗️</span> Reserve Upgrades
+                </button>
+                <button class="tab-btn" data-tab="tab-resources">
+                    <span>🪓</span> Wood Gathering
+                </button>
+            </nav>
+
+            <div class="tab-content">
+                <!-- Animal Market Panel -->
+                <div id="tab-animals" class="tab-panel active">
+                    <div id="animal-market-grid" class="panel-grid"></div>
+                </div>
+
+                <!-- Ranger Hiring Panel -->
+                <div id="tab-rangers" class="tab-panel">
+                    <div id="ranger-hiring-grid" class="panel-grid"></div>
+                </div>
+
+                <!-- Upgrades Panel -->
+                <div id="tab-upgrades" class="tab-panel">
+                    <div id="upgrades-grid" class="panel-grid"></div>
+                </div>
+
+                <!-- Resource Chopping Panel -->
+                <div id="tab-resources" class="tab-panel">
+                    <div class="chop-section">
+                        <h3>🪵 Forest Clearing & Firewood Production</h3>
+                        <p style="color: var(--text-muted); margin: 10px 0 20px 0; max-width: 500px;">
+                            Send a ranger patrol to clear brush and gather firewood for camp heating and fence maintenance.
+                        </p>
+                        <button id="btn-chop-wood" class="action-btn big-chop-btn">
+                            🪓 Chop Wood (+5 Wood)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Scripts -->
+    <script src="data.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>
