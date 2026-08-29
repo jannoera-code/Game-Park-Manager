@@ -103,6 +103,7 @@ const CAMP_TIERS_DATA = [
         name: 'Basic Outpost',
         cost: 0,
         woodCost: 0,
+        stoneCost: 0,
         baseCapacity: 5,
         description: 'A minimal tented ranger post with basic supplies.'
     },
@@ -111,6 +112,7 @@ const CAMP_TIERS_DATA = [
         name: 'Ranger Station',
         cost: 1200,
         woodCost: 50,
+        stoneCost: 30,
         baseCapacity: 12,
         description: 'Wooden lodge with communications gear and vehicle storage.'
     },
@@ -119,6 +121,7 @@ const CAMP_TIERS_DATA = [
         name: 'Reserve HQ',
         cost: 4000,
         woodCost: 150,
+        stoneCost: 100,
         baseCapacity: 25,
         description: 'Comprehensive operations center with satellite tracking and veterinary hub.'
     }
@@ -130,6 +133,7 @@ const FENCE_TIERS_DATA = [
         name: 'Wooden Fence',
         cost: 0,
         woodCost: 0,
+        stoneCost: 0,
         securityRating: 'Low',
         maxAnimalTier: 1,
         description: 'Simple wooden posts and wire. Suitable for small herbivores.'
@@ -139,6 +143,7 @@ const FENCE_TIERS_DATA = [
         name: 'Reinforced Steel Mesh',
         cost: 1500,
         woodCost: 40,
+        stoneCost: 25,
         securityRating: 'Medium',
         maxAnimalTier: 2,
         description: 'Heavy duty steel fencing to hold large herbivores like giraffes.'
@@ -148,6 +153,7 @@ const FENCE_TIERS_DATA = [
         name: 'Electric Perimeter Guard',
         cost: 4500,
         woodCost: 80,
+        stoneCost: 60,
         securityRating: 'High',
         maxAnimalTier: 3,
         description: 'High voltage security enclosure required for big cats and elephants.'
@@ -159,6 +165,7 @@ const INITIAL_GAME_STATE = {
     day: 1,
     dayProgress: 0, // 0 to 100 percentage
     wood: 20,
+    stone: 0,
     ownedAnimals: [
         { id: 'impala', count: 2 }
     ],

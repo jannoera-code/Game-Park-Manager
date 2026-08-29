@@ -38,6 +38,10 @@
                     <span id="stat-wood" class="stat-value">20 Wood</span>
                 </div>
                 <div class="stat-card">
+                    <span class="stat-label">Stone Resources</span>
+                    <span id="stat-stone" class="stat-value">0 Stone</span>
+                </div>
+                <div class="stat-card">
                     <span class="stat-label">Camp Level</span>
                     <span id="stat-camp-tier" class="stat-value">Tier 1</span>
                 </div>
@@ -71,9 +75,6 @@
                 <button class="tab-btn" data-tab="tab-upgrades">
                     <span>🏗️</span> Reserve Upgrades
                 </button>
-                <button class="tab-btn" data-tab="tab-resources">
-                    <span>🪓</span> Wood Gathering
-                </button>
             </nav>
 
             <div class="tab-content">
@@ -90,19 +91,6 @@
                 <!-- Upgrades Panel -->
                 <div id="tab-upgrades" class="tab-panel">
                     <div id="upgrades-grid" class="panel-grid"></div>
-                </div>
-
-                <!-- Resource Chopping Panel -->
-                <div id="tab-resources" class="tab-panel">
-                    <div class="chop-section">
-                        <h3>🪵 Forest Clearing & Firewood Production</h3>
-                        <p style="color: var(--text-muted); margin: 10px 0 20px 0; max-width: 500px;">
-                            Send a ranger patrol to clear brush and gather firewood for camp heating and fence maintenance.
-                        </p>
-                        <button id="btn-chop-wood" class="action-btn big-chop-btn">
-                            🪓 Chop Wood (+5 Wood)
-                        </button>
-                    </div>
                 </div>
             </div>
         </section>
