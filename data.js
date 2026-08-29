@@ -2,105 +2,166 @@
  * African Wildlife Reserve Management Game - Configuration & Data Structures
  */
 
-const ANIMALS_DATA = [
+const BASE_ANIMAL_SPECIES = [
     {
-        id: 'impala',
+        speciesId: 'impala',
         name: 'Impala',
         icon: '🦌',
         image: 'impala.png',
-        cost: 250,
-        attractionScore: 15,
+        baseCost: 250,
+        baseAttraction: 15,
         enclosureTierReq: 1,
         upkeep: 5,
+        maxAge: 12,
         description: 'A swift and graceful antelope native to eastern and southern Africa.'
     },
     {
-        id: 'zebra',
+        speciesId: 'zebra',
         name: 'Plains Zebra',
         icon: '🦓',
         image: 'zebra.png',
-        cost: 600,
-        attractionScore: 40,
+        baseCost: 600,
+        baseAttraction: 40,
         enclosureTierReq: 1,
         upkeep: 12,
+        maxAge: 20,
         description: 'Iconic striped herbivore that attracts families and safari tourists.'
     },
     {
-        id: 'rhino',
+        speciesId: 'rhino',
         name: 'White Rhino',
         icon: '🦏',
         image: 'rhino.png',
-        cost: 1500,
-        attractionScore: 110,
+        baseCost: 1500,
+        baseAttraction: 110,
         enclosureTierReq: 2,
         upkeep: 30,
+        maxAge: 35,
         description: 'Heavy armored herbivore requiring reinforced perimeter fencing.'
     },
     {
-        id: 'lion',
+        speciesId: 'lion',
         name: 'African Lion',
         icon: '🦁',
         image: 'lion.png',
-        cost: 3500,
-        attractionScore: 280,
+        baseCost: 3500,
+        baseAttraction: 280,
         enclosureTierReq: 3,
         upkeep: 75,
+        maxAge: 15,
         description: 'Apex predator and major tourist draw. Requires high-security electric fencing.'
     },
     {
-        id: 'elephant',
+        speciesId: 'elephant',
         name: 'African Elephant',
         icon: '🐘',
         image: 'elephant.png',
-        cost: 6000,
-        attractionScore: 500,
+        baseCost: 6000,
+        baseAttraction: 500,
         enclosureTierReq: 3,
         upkeep: 120,
+        maxAge: 60,
         description: 'The majestic giant of the savannah. Supreme attraction requiring top-tier security.'
     }
 ];
 
-const RANGERS_DATA = [
-    {
-        id: 'ranger_kofi',
-        name: 'Kofi Mensah',
-        dailyWage: 30,
-        capacityBonus: 5,
-        traits: [
-            { name: 'Tracker', type: 'good', description: '+10% visitor satisfaction' },
-            { name: 'Heavy Sleeper', type: 'bad', description: 'Slightly higher risk during night patrols' }
-        ]
-    },
-    {
-        id: 'ranger_aminata',
-        name: 'Aminata Diallo',
-        dailyWage: 45,
-        capacityBonus: 8,
-        traits: [
-            { name: 'Veteran', type: 'good', description: '+20% fence upkeep efficiency' },
-            { name: 'Strict', type: 'good', description: 'Prevents poaching events' }
-        ]
-    },
-    {
-        id: 'ranger_tariq',
-        name: 'Tariq Hassan',
-        dailyWage: 25,
-        capacityBonus: 4,
-        traits: [
-            { name: 'Mechanic', type: 'good', description: 'Reduces camp maintenance costs' }
-        ]
-    },
-    {
-        id: 'ranger_zola',
-        name: 'Zola Ndlovu',
-        dailyWage: 60,
-        capacityBonus: 12,
-        traits: [
-            { name: 'Zoologist', type: 'good', description: '+15% animal breeding rate bonus' },
-            { name: 'High Wage', type: 'bad', description: 'Demands regular raises' }
-        ]
-    }
+const RANGER_FIRST_NAMES = ['Kofi', 'Aminata', 'Tariq', 'Zola', 'Jabari', 'Nia', 'Kwame', 'Siti', 'Bakari', 'Fatima', 'Lethabo', 'Tendo'];
+const RANGER_LAST_NAMES = ['Mensah', 'Diallo', 'Hassan', 'Ndlovu', 'Osei', 'Kamau', 'Traore', 'Mbeki', 'Abebe', 'Dlamini'];
+
+const TRAITS_POOL = [
+    { id: 'athletic', name: 'Athletic', type: 'good', description: '+15% Move Speed', effects: { moveSpeedMult: 1.15 } },
+    { id: 'lazy', name: 'Lazy', type: 'bad', description: '-10% Work Speed', effects: { workSpeedMult: 0.90 } },
+    { id: 'efficient', name: 'Efficient', type: 'good', description: '+20% Work Speed', effects: { workSpeedMult: 1.20 } },
+    { id: 'veteran', name: 'Veteran', type: 'good', description: '+5 Base Capacity', effects: { capacityBonus: 5 } },
+    { id: 'eagle_eye', name: 'Eagle Eye', type: 'good', description: '+25% Sight Radius', effects: { sightRadiusMult: 1.25 } },
+    { id: 'thrifty', name: 'Thrifty', type: 'good', description: '-15% Daily Wage', effects: { wageMult: 0.85 } },
+    { id: 'demanding', name: 'Demanding', type: 'bad', description: '+20% Daily Wage', effects: { wageMult: 1.20 } },
+    { id: 'nature_lover', name: 'Nature Lover', type: 'good', description: '+10% Attraction Income', effects: { attractionMult: 1.10 } }
 ];
+
+const BUFF_OPTIONS = [
+    { id: 'speed', title: '⚡ Cheetah Boots', description: '+10% Movement Speed', effect: { moveSpeedMult: 0.10 } },
+    { id: 'yield', title: '🪓 Heavy Axe', description: '+1 Harvest Yield', effect: { harvestYieldBonus: 1 } },
+    { id: 'workSpeed', title: '⏱️ Quick Hands', description: '+10% Interaction Speed', effect: { workSpeedMult: 0.10 } },
+    { id: 'income', title: '💰 Safari Promotion', description: '+15% Visitor Income', effect: { incomeMult: 0.15 } },
+    { id: 'capacity', title: '🎪 Reserve Permit', description: '+5 Animal Capacity', effect: { capacityBonus: 5 } }
+];
+
+/**
+ * Dynamic Animal Listing Generator
+ */
+function generateAnimalListings(count = 6) {
+    const listings = [];
+    for (let i = 0; i < count; i++) {
+        const species = BASE_ANIMAL_SPECIES[Math.floor(Math.random() * BASE_ANIMAL_SPECIES.length)];
+        const gender = Math.random() < 0.5 ? 'Male' : 'Female';
+        const age = Math.floor(1 + Math.random() * species.maxAge);
+
+        // Prime adult age factor (e.g. middle age is highest value)
+        const primeAge = Math.floor(species.maxAge * 0.4);
+        const ageDiff = Math.abs(age - primeAge);
+        const ageFactor = Math.max(0.6, 1.3 - (ageDiff / species.maxAge) * 0.8);
+
+        const cost = Math.round(species.baseCost * ageFactor);
+        const attractionScore = Math.round(species.baseAttraction * ageFactor);
+
+        listings.push({
+            id: `listing_animal_${Date.now()}_${i}_${Math.floor(Math.random() * 1000)}`,
+            speciesId: species.speciesId,
+            name: species.name,
+            icon: species.icon,
+            image: species.image,
+            age: age,
+            gender: gender,
+            cost: cost,
+            attractionScore: attractionScore,
+            enclosureTierReq: species.enclosureTierReq,
+            upkeep: species.upkeep,
+            description: `${species.description} (${gender}, ${age} yrs old)`
+        });
+    }
+    return listings;
+}
+
+/**
+ * Dynamic Ranger Listing Generator
+ * Generates Rangers with random age, gender, and exactly 3 random traits.
+ */
+function generateRangerListings(count = 6) {
+    const listings = [];
+    for (let i = 0; i < count; i++) {
+        const fname = RANGER_FIRST_NAMES[Math.floor(Math.random() * RANGER_FIRST_NAMES.length)];
+        const lname = RANGER_LAST_NAMES[Math.floor(Math.random() * RANGER_LAST_NAMES.length)];
+        const fullName = `${fname} ${lname}`;
+        const gender = Math.random() < 0.5 ? 'Male' : 'Female';
+        const age = Math.floor(20 + Math.random() * 38);
+        const baseWage = 25 + Math.floor(Math.random() * 35);
+        const image = Math.random() < 0.5 ? 'ranger1.png' : 'ranger2.png';
+
+        // Pick 3 unique traits
+        const shuffledTraits = [...TRAITS_POOL].sort(() => 0.5 - Math.random());
+        const selectedTraits = shuffledTraits.slice(0, 3);
+
+        let wageMult = 1.0;
+        selectedTraits.forEach(t => {
+            if (t.effects.wageMult) wageMult *= t.effects.wageMult;
+        });
+
+        const dailyWage = Math.round(baseWage * wageMult);
+
+        listings.push({
+            id: `ranger_gen_${Date.now()}_${i}_${Math.floor(Math.random() * 1000)}`,
+            name: fullName,
+            age: age,
+            gender: gender,
+            dailyWage: dailyWage,
+            capacityBonus: 5,
+            traits: selectedTraits,
+            image: image
+        });
+    }
+    return listings;
+}
 
 const BUILDINGS_DATA = [
     {
@@ -112,7 +173,7 @@ const BUILDINGS_DATA = [
         processedStoneCost: 0,
         width: 80,
         height: 80,
-        description: 'Provides a operational staging post for hired rangers to spawn and patrol.'
+        description: 'Provides operational staging post for hired rangers to spawn, rest, and patrol.'
     },
     {
         id: 'furnace',
@@ -203,12 +264,8 @@ const INITIAL_GAME_STATE = {
     wood: 30,
     stone: 15,
     processedStone: 0,
-    ownedAnimals: [
-        { id: 'impala', count: 2 }
-    ],
-    hiredRangers: [
-        { id: 'ranger_kofi' }
-    ],
+    ownedAnimals: [],
+    hiredRangers: [],
     campTier: 1,
     fenceTier: 1,
     placedBuildings: []

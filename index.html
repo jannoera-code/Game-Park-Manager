@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>African Wildlife Reserve Manager - Tactical Survival Hybrid</title>
+    <title>African Wildlife Reserve Manager - RPG & Living AI</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -18,6 +18,10 @@
             <div class="hud-brand">
                 <h1>🌍 Serengeti Reserve</h1>
                 <div class="day-badge">Day <span id="stat-day">1</span></div>
+                <!-- Ranger Housing Warning Badge -->
+                <div id="housing-warning-badge" class="warning-badge hidden" title="Staff Unhoused! Build Ranger Huts so hired rangers can spawn.">
+                    ⚠️ <span id="housing-warning-text">Rangers Unhoused</span>
+                </div>
             </div>
 
             <!-- Day Progress Bar -->
@@ -37,7 +41,7 @@
                 </div>
                 <div class="stat-pill">
                     <span class="stat-label">Capacity</span>
-                    <span id="stat-capacity" class="stat-value">2 / 5</span>
+                    <span id="stat-capacity" class="stat-value">0 / 5</span>
                 </div>
                 <div class="stat-pill">
                     <span class="stat-label">Wood</span>
@@ -57,54 +61,49 @@
         <!-- Notification / Status Banner -->
         <div id="status-banner" class="status-banner hidden"></div>
 
-        <!-- Right Side Floating Dock Controls -->
-        <nav class="side-dock">
-            <button class="dock-btn" data-panel="panel-animals" title="Animal Market">
-                <span class="dock-icon">🦁</span>
-                <span class="dock-label">Market</span>
-            </button>
-            <button class="dock-btn" data-panel="panel-rangers" title="Ranger Staff">
-                <span class="dock-icon">🤠</span>
-                <span class="dock-label">Rangers</span>
-            </button>
-            <button class="dock-btn" data-panel="panel-crafting" title="Crafting & Building">
-                <span class="dock-icon">🔨</span>
-                <span class="dock-label">Crafting</span>
-            </button>
-            <button class="dock-btn" data-panel="panel-upgrades" title="Reserve Upgrades">
-                <span class="dock-icon">🏗️</span>
-                <span class="dock-label">Upgrades</span>
-            </button>
-        </nav>
-
-        <!-- Floating Collapsible Drawer Panels -->
-        <div id="floating-panel-container" class="floating-panel-container hidden">
-            <div class="panel-header">
-                <h2 id="panel-title">Management Panel</h2>
-                <button id="close-panel-btn" class="close-btn">&times;</button>
-            </div>
-
-            <div class="panel-content-scroll">
-                <!-- Animal Market Panel -->
-                <div id="panel-animals" class="panel-section hidden">
+        <!-- Right Side Hover-Slide Menu Container -->
+        <aside class="side-menu-container">
+            <!-- Animals Slide Drawer -->
+            <div class="slide-menu-item">
+                <div class="menu-tab">🦁 <span>Animals</span></div>
+                <div class="menu-panel">
+                    <h3>Marketplace Animals</h3>
                     <div id="animal-market-grid" class="panel-grid"></div>
                 </div>
+            </div>
 
-                <!-- Ranger Staff Panel -->
-                <div id="panel-rangers" class="panel-section hidden">
+            <!-- Rangers Slide Drawer -->
+            <div class="slide-menu-item">
+                <div class="menu-tab">🤠 <span>Rangers</span></div>
+                <div class="menu-panel">
+                    <h3>Recruit Rangers</h3>
                     <div id="ranger-hiring-grid" class="panel-grid"></div>
                 </div>
+            </div>
 
-                <!-- Crafting & Building Panel -->
-                <div id="panel-crafting" class="panel-section hidden">
+            <!-- Crafting Slide Drawer -->
+            <div class="slide-menu-item">
+                <div class="menu-tab">🔨 <span>Crafting</span></div>
+                <div class="menu-panel">
+                    <h3>Crafting & Building</h3>
                     <div id="crafting-grid" class="panel-grid"></div>
                 </div>
+            </div>
 
-                <!-- Upgrades Panel -->
-                <div id="panel-upgrades" class="panel-section hidden">
+            <!-- Upgrades Slide Drawer -->
+            <div class="slide-menu-item">
+                <div class="menu-tab">🏗️ <span>Upgrades</span></div>
+                <div class="menu-panel">
+                    <h3>Reserve Upgrades</h3>
                     <div id="upgrades-grid" class="panel-grid"></div>
                 </div>
             </div>
+        </aside>
+
+        <!-- Bottom-Left Circular Minimap & Fog Widget -->
+        <div class="minimap-container">
+            <canvas id="minimapCanvas" width="160" height="160"></canvas>
+            <div class="minimap-label">MINIMAP</div>
         </div>
 
         <!-- Furnace UI Modal -->
@@ -148,11 +147,41 @@
             </div>
         </div>
 
+        <!-- Inventory Grid Modal ('E' Key) -->
+        <div id="inventory-modal" class="modal-backdrop hidden">
+            <div class="modal-card inventory-card">
+                <div class="modal-header">
+                    <h3>🎒 Player Backpack (20 Slots)</h3>
+                    <button id="close-inventory-btn" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div id="inventory-grid" class="inventory-grid"></div>
+                    <div class="inventory-footer">
+                        <span>Tip: Resources stack up to 100 per slot. Press <strong>[E]</strong> or <strong>[ESC]</strong> to close.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Forgotten Ranger Crate Reward Modal -->
+        <div id="crate-modal" class="modal-backdrop hidden">
+            <div class="modal-card crate-card">
+                <div class="modal-header">
+                    <h3>📦 Forgotten Ranger Crate Discovered!</h3>
+                </div>
+                <div class="modal-body">
+                    <p class="crate-subtitle">Choose one permanent field buff for your ranger squad:</p>
+                    <div id="crate-buff-choices" class="crate-choices-grid"></div>
+                </div>
+            </div>
+        </div>
+
         <!-- Controls Guide Footer Overlay -->
         <div class="controls-guide">
             <span><strong>[WASD / Arrows]</strong> Move Player</span>
-            <span><strong>[Left Click]</strong> Hit Trees/Rocks (5x) / Open Furnace</span>
-            <span><strong>[ESC]</strong> Cancel Placement</span>
+            <span><strong>[E]</strong> Open Inventory Grid</span>
+            <span><strong>[Left Click]</strong> Harvest / Interact / Open Furnace</span>
+            <span><strong>[ESC]</strong> Close / Cancel</span>
         </div>
     </div>
 
