@@ -13,18 +13,361 @@ class ReserveGame {
         // Canvas & visual state
         this.canvas = document.getElementById('reserveCanvas');
         this.ctx = this.canvas ? this.canvas.getContext('2d') : null;
+
+        // World & Camera Config
+        this.world = { width: 2000, height: 2000 };
+        this.reserve = { x: 500, y: 500, width: 1000, height: 1000 };
+
+        // Player object (spawns outside fence in the Wild)
+        this.player = {
+            x: 250,
+            y: 250,
+            radius: 16,
+            speed: 220, // px / sec
+            angle: 0,
+            isGathering: false,
+            gatherTimer: 0,
+            gatherDuration: 0.4, // seconds
+            currentTarget: null
+        };
+
+        // Inputs
+        this.keys = {
+            w: false, a: false, s: false, d: false,
+            ArrowUp: false, ArrowLeft: false, ArrowDown: false, ArrowRight: false
+        };
+        this.mouse = {
+            screenX: 0,
+            screenY: 0,
+            worldX: 0,
+            worldY: 0
+        };
+
+        // Environment Objects in the Wild
+        this.trees = [];
+        this.rocks = [];
         this.renderedAnimals = [];
+        this.floatingTexts = [];
+
+        // Animation loop tracking
+        this.lastFrameTime = performance.now();
 
         this.init();
     }
 
     init() {
+        this.resizeCanvas();
+        window.addEventListener('resize', () => this.resizeCanvas());
+
         this.setupTabListeners();
-        this.setupActionListeners();
+        this.setupControls();
+        this.generateWildResources();
         this.initVisualAnimals();
         this.updateUI();
         this.startLoop();
-        this.renderMap();
+        this.startRenderLoop();
+    }
+
+    resizeCanvas() {
+        if (!this.canvas) return;
+        const rect = this.canvas.parentElement.getBoundingClientRect();
+        this.canvas.width = rect.width || 800;
+        this.canvas.height = rect.height || 450;
+    }
+
+    // Input & Movement setup
+    setupControls() {
+        window.addEventListener('keydown', (e) => {
+            const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+            if (k in this.keys) {
+                this.keys[k] = true;
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+            if (k in this.keys) {
+                this.keys[k] = false;
+            }
+        });
+
+        if (this.canvas) {
+            this.canvas.addEventListener('mousemove', (e) => {
+                const rect = this.canvas.getBoundingClientRect();
+                this.mouse.screenX = e.clientX - rect.left;
+                this.mouse.screenY = e.clientY - rect.top;
+            });
+
+            this.canvas.addEventListener('mousedown', (e) => {
+                if (e.button === 0) { // Left click
+                    this.tryGatherResource();
+                }
+            });
+        }
+    }
+
+    tryGatherResource() {
+        if (this.player.isGathering) return;
+
+        const reach = 70; // Gathering reach distance
+        let closestObj = null;
+        let closestDist = reach;
+        let objType = null;
+
+        // Check trees
+        for (const tree of this.trees) {
+            const dist = Math.hypot(this.player.x - tree.x, this.player.y - tree.y);
+            if (dist < closestDist) {
+                closestDist = dist;
+                closestObj = tree;
+                objType = 'tree';
+            }
+        }
+
+        // Check rocks
+        for (const rock of this.rocks) {
+            const dist = Math.hypot(this.player.x - rock.x, this.player.y - rock.y);
+            if (dist < closestDist) {
+                closestDist = dist;
+                closestObj = rock;
+                objType = 'rock';
+            }
+        }
+
+        if (closestObj) {
+            this.player.isGathering = true;
+            this.player.gatherTimer = 0;
+            this.player.currentTarget = { obj: closestObj, type: objType };
+        }
+    }
+
+    updateGathering(dt) {
+        if (!this.player.isGathering || !this.player.currentTarget) return;
+
+        this.player.gatherTimer += dt;
+        if (this.player.gatherTimer >= this.player.gatherDuration) {
+            const target = this.player.currentTarget;
+            if (target.type === 'tree') {
+                const index = this.trees.findIndex(t => t.id === target.obj.id);
+                if (index !== -1) {
+                    this.trees.splice(index, 1);
+                    this.state.wood += target.obj.yield;
+                    this.addFloatingText(`+${target.obj.yield} Wood`, target.obj.x, target.obj.y - 10, '#2ecc71');
+                    // Respawn tree in 12s
+                    setTimeout(() => this.respawnSingleResource('tree'), 12000);
+                }
+            } else if (target.type === 'rock') {
+                const index = this.rocks.findIndex(r => r.id === target.obj.id);
+                if (index !== -1) {
+                    this.rocks.splice(index, 1);
+                    this.state.stone += target.obj.yield;
+                    this.addFloatingText(`+${target.obj.yield} Stone`, target.obj.x, target.obj.y - 10, '#bdc3c7');
+                    // Respawn rock in 12s
+                    setTimeout(() => this.respawnSingleResource('rock'), 12000);
+                }
+            }
+
+            this.player.isGathering = false;
+            this.player.currentTarget = null;
+            this.updateUI();
+        }
+    }
+
+    respawnSingleResource(type) {
+        const isOutsideReserve = (x, y, margin = 40) => {
+            return (
+                x < this.reserve.x - margin ||
+                x > this.reserve.x + this.reserve.width + margin ||
+                y < this.reserve.y - margin ||
+                y > this.reserve.y + this.reserve.height + margin
+            );
+        };
+
+        let attempts = 0;
+        while (attempts < 100) {
+            attempts++;
+            const x = 50 + Math.random() * (this.world.width - 100);
+            const y = 50 + Math.random() * (this.world.height - 100);
+
+            if (isOutsideReserve(x, y, 40)) {
+                if (type === 'tree') {
+                    this.trees.push({
+                        id: 'tree_' + Math.random(),
+                        x: x,
+                        y: y,
+                        radius: 20,
+                        yield: 5
+                    });
+                    break;
+                } else if (type === 'rock') {
+                    this.rocks.push({
+                        id: 'rock_' + Math.random(),
+                        x: x,
+                        y: y,
+                        radius: 18,
+                        yield: 3
+                    });
+                    break;
+                }
+            }
+        }
+    }
+
+    addFloatingText(text, x, y, color = '#ffffff') {
+        this.floatingTexts.push({
+            text: text,
+            x: x,
+            y: y,
+            color: color,
+            alpha: 1.0,
+            life: 1.0 // 1 second
+        });
+    }
+
+    updateFloatingTexts(dt) {
+        for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
+            const ft = this.floatingTexts[i];
+            ft.life -= dt;
+            ft.y -= 25 * dt; // float upward
+            ft.alpha = Math.max(0, ft.life);
+            if (ft.life <= 0) {
+                this.floatingTexts.splice(i, 1);
+            }
+        }
+    }
+
+    checkCollision(px, py) {
+        const r = this.player.radius;
+
+        // World bounds
+        if (px - r < 0 || px + r > this.world.width || py - r < 0 || py + r > this.world.height) {
+            return true;
+        }
+
+        // Reserve fence rectangle collision
+        const rx1 = this.reserve.x;
+        const ry1 = this.reserve.y;
+        const rx2 = this.reserve.x + this.reserve.width;
+        const ry2 = this.reserve.y + this.reserve.height;
+
+        const closestX = Math.max(rx1, Math.min(px, rx2));
+        const closestY = Math.max(ry1, Math.min(py, ry2));
+        const distX = px - closestX;
+        const distY = py - closestY;
+        if ((distX * distX + distY * distY) < r * r) {
+            return true;
+        }
+
+        // Trees collision
+        for (const tree of this.trees) {
+            const d = Math.hypot(px - tree.x, py - tree.y);
+            if (d < r + tree.radius) return true;
+        }
+
+        // Rocks collision
+        for (const rock of this.rocks) {
+            const d = Math.hypot(px - rock.x, py - rock.y);
+            if (d < r + rock.radius) return true;
+        }
+
+        return false;
+    }
+
+    updatePlayer(dt) {
+        if (this.player.isGathering) return; // freeze movement while gathering animation plays
+
+        let dx = 0;
+        let dy = 0;
+
+        if (this.keys.w || this.keys.ArrowUp) dy -= 1;
+        if (this.keys.s || this.keys.ArrowDown) dy += 1;
+        if (this.keys.a || this.keys.ArrowLeft) dx -= 1;
+        if (this.keys.d || this.keys.ArrowRight) dx += 1;
+
+        if (dx !== 0 && dy !== 0) {
+            dx *= Math.SQRT1_2;
+            dy *= Math.SQRT1_2;
+        }
+
+        const moveX = dx * this.player.speed * dt;
+        const moveY = dy * this.player.speed * dt;
+
+        if (moveX !== 0) {
+            const newX = this.player.x + moveX;
+            if (!this.checkCollision(newX, this.player.y)) {
+                this.player.x = newX;
+            }
+        }
+
+        if (moveY !== 0) {
+            const newY = this.player.y + moveY;
+            if (!this.checkCollision(this.player.x, newY)) {
+                this.player.y = newY;
+            }
+        }
+
+        // Calculate world mouse position based on camera offset (player centered)
+        const camX = this.player.x - (this.canvas ? this.canvas.width / 2 : 400);
+        const camY = this.player.y - (this.canvas ? this.canvas.height / 2 : 225);
+        this.mouse.worldX = camX + this.mouse.screenX;
+        this.mouse.worldY = camY + this.mouse.screenY;
+
+        this.player.angle = Math.atan2(this.mouse.worldY - this.player.y, this.mouse.worldX - this.player.x);
+    }
+
+    generateWildResources() {
+        this.trees = [];
+        this.rocks = [];
+
+        // Helper to check if point is outside reserve with margin
+        const isOutsideReserve = (x, y, margin = 40) => {
+            return (
+                x < this.reserve.x - margin ||
+                x > this.reserve.x + this.reserve.width + margin ||
+                y < this.reserve.y - margin ||
+                y > this.reserve.y + this.reserve.height + margin
+            );
+        };
+
+        // Spawn 60 Trees in the Wild
+        let attempts = 0;
+        while (this.trees.length < 60 && attempts < 1000) {
+            attempts++;
+            const x = 50 + Math.random() * (this.world.width - 100);
+            const y = 50 + Math.random() * (this.world.height - 100);
+
+            if (isOutsideReserve(x, y, 40)) {
+                this.trees.push({
+                    id: 'tree_' + Math.random(),
+                    x: x,
+                    y: y,
+                    radius: 20,
+                    yield: 5
+                });
+            }
+        }
+
+        // Spawn 40 Rocks in the Wild
+        attempts = 0;
+        while (this.rocks.length < 40 && attempts < 1000) {
+            attempts++;
+            const x = 50 + Math.random() * (this.world.width - 100);
+            const y = 50 + Math.random() * (this.world.height - 100);
+
+            if (isOutsideReserve(x, y, 40)) {
+                // Ensure not overlapping existing tree
+                const overlap = this.trees.some(t => Math.hypot(t.x - x, t.y - y) < 40);
+                if (!overlap) {
+                    this.rocks.push({
+                        id: 'rock_' + Math.random(),
+                        x: x,
+                        y: y,
+                        radius: 18,
+                        yield: 3
+                    });
+                }
+            }
+        }
     }
 
     // Tab switching handler
@@ -45,15 +388,8 @@ class ReserveGame {
         });
     }
 
-    // Button event listeners
     setupActionListeners() {
-        const chopBtn = document.getElementById('btn-chop-wood');
-        if (chopBtn) {
-            chopBtn.addEventListener('click', () => {
-                this.state.wood += 5;
-                this.updateUI();
-            });
-        }
+        // Obsolete UI action listeners removed (Wood chopping now done in-world)
     }
 
     // Calculations
@@ -101,7 +437,7 @@ class ReserveGame {
         return this.getDailyAttractionIncome() - this.getDailyRangerWages();
     }
 
-    // Game Loop (120 seconds per day)
+    // Economy & Day Cycle Loop (100ms interval)
     startLoop() {
         setInterval(() => {
             const deltaSec = this.tickInterval / 1000;
@@ -116,8 +452,23 @@ class ReserveGame {
 
             this.updateProgressBar();
             this.updateMapAnimals(deltaSec);
-            this.renderMap();
         }, this.tickInterval);
+    }
+
+    // 60FPS Game Render Loop
+    startRenderLoop() {
+        const frame = (timestamp) => {
+            const dt = Math.min(0.1, (timestamp - this.lastFrameTime) / 1000);
+            this.lastFrameTime = timestamp;
+
+            this.updatePlayer(dt);
+            this.updateGathering(dt);
+            this.updateFloatingTexts(dt);
+            this.render();
+
+            requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
     }
 
     processNewDay() {
@@ -155,6 +506,9 @@ class ReserveGame {
 
         const elWood = document.getElementById('stat-wood');
         if (elWood) elWood.textContent = `${this.state.wood} Wood`;
+
+        const elStone = document.getElementById('stat-stone');
+        if (elStone) elStone.textContent = `${this.state.stone} Stone`;
 
         const elCamp = document.getElementById('stat-camp-tier');
         if (elCamp) elCamp.textContent = `Tier ${this.state.campTier}`;
@@ -301,7 +655,9 @@ class ReserveGame {
         campCard.className = 'item-card';
 
         if (nextCamp) {
-            const canAfford = this.state.funds >= nextCamp.cost && this.state.wood >= nextCamp.woodCost;
+            const canAfford = this.state.funds >= nextCamp.cost &&
+                              this.state.wood >= nextCamp.woodCost &&
+                              this.state.stone >= (nextCamp.stoneCost || 0);
             campCard.innerHTML = `
                 <div class="card-header">
                     <div class="card-icon">🏕️</div>
@@ -314,6 +670,7 @@ class ReserveGame {
                 <div class="card-stats">
                     <span class="badge">Cost: $${nextCamp.cost}</span>
                     <span class="badge">Wood: ${nextCamp.woodCost}</span>
+                    <span class="badge">Stone: ${nextCamp.stoneCost || 0}</span>
                     <span class="badge badge-good">Base Cap: ${nextCamp.baseCapacity}</span>
                 </div>
                 <button class="action-btn" ${!canAfford ? 'disabled' : ''}>
@@ -325,6 +682,7 @@ class ReserveGame {
                 btn.addEventListener('click', () => {
                     this.state.funds -= nextCamp.cost;
                     this.state.wood -= nextCamp.woodCost;
+                    this.state.stone -= (nextCamp.stoneCost || 0);
                     this.state.campTier += 1;
                     this.updateUI();
                 });
@@ -351,7 +709,9 @@ class ReserveGame {
         fenceCard.className = 'item-card';
 
         if (nextFence) {
-            const canAfford = this.state.funds >= nextFence.cost && this.state.wood >= nextFence.woodCost;
+            const canAfford = this.state.funds >= nextFence.cost &&
+                              this.state.wood >= nextFence.woodCost &&
+                              this.state.stone >= (nextFence.stoneCost || 0);
             fenceCard.innerHTML = `
                 <div class="card-header">
                     <div class="card-icon">🛡️</div>
@@ -364,6 +724,7 @@ class ReserveGame {
                 <div class="card-stats">
                     <span class="badge">Cost: $${nextFence.cost}</span>
                     <span class="badge">Wood: ${nextFence.woodCost}</span>
+                    <span class="badge">Stone: ${nextFence.stoneCost || 0}</span>
                     <span class="badge badge-good">Security: ${nextFence.securityRating}</span>
                 </div>
                 <button class="action-btn" ${!canAfford ? 'disabled' : ''}>
@@ -375,6 +736,7 @@ class ReserveGame {
                 btn.addEventListener('click', () => {
                     this.state.funds -= nextFence.cost;
                     this.state.wood -= nextFence.woodCost;
+                    this.state.stone -= (nextFence.stoneCost || 0);
                     this.state.fenceTier += 1;
                     this.updateUI();
                 });
@@ -408,87 +770,254 @@ class ReserveGame {
     }
 
     addVisualAnimal(animalDef) {
+        // Spawn strictly inside the reserve fence bounds with margin
+        const margin = 50;
+        const minX = this.reserve.x + margin;
+        const maxX = this.reserve.x + this.reserve.width - margin;
+        const minY = this.reserve.y + margin;
+        const maxY = this.reserve.y + this.reserve.height - margin;
+
+        const startX = minX + Math.random() * (maxX - minX);
+        const startY = minY + Math.random() * (maxY - minY);
+
         this.renderedAnimals.push({
             id: animalDef.id,
             icon: animalDef.icon,
-            x: 100 + Math.random() * 600,
-            y: 80 + Math.random() * 280,
-            targetX: 100 + Math.random() * 600,
-            targetY: 80 + Math.random() * 280,
-            speed: 15 + Math.random() * 20
+            x: startX,
+            y: startY,
+            targetX: minX + Math.random() * (maxX - minX),
+            targetY: minY + Math.random() * (maxY - minY),
+            speed: 20 + Math.random() * 25
         });
     }
 
     updateMapAnimals(deltaSec) {
+        const margin = 50;
+        const minX = this.reserve.x + margin;
+        const maxX = this.reserve.x + this.reserve.width - margin;
+        const minY = this.reserve.y + margin;
+        const maxY = this.reserve.y + this.reserve.height - margin;
+
         this.renderedAnimals.forEach(animal => {
             const dx = animal.targetX - animal.x;
             const dy = animal.targetY - animal.y;
             const dist = Math.hypot(dx, dy);
 
-            if (dist < 5) {
-                animal.targetX = 100 + Math.random() * 600;
-                animal.targetY = 80 + Math.random() * 280;
+            if (dist < 10) {
+                animal.targetX = minX + Math.random() * (maxX - minX);
+                animal.targetY = minY + Math.random() * (maxY - minY);
             } else {
                 animal.x += (dx / dist) * animal.speed * deltaSec;
                 animal.y += (dy / dist) * animal.speed * deltaSec;
+
+                // Clamp strictly inside reserve fence
+                animal.x = Math.max(minX, Math.min(animal.x, maxX));
+                animal.y = Math.max(minY, Math.min(animal.y, maxY));
             }
         });
     }
 
-    renderMap() {
-        if (!this.ctx) return;
-        const width = this.canvas.width;
-        const height = this.canvas.height;
+    render() {
+        if (!this.ctx || !this.canvas) return;
 
-        // Savannah Background
-        this.ctx.fillStyle = '#2d3a22';
-        this.ctx.fillRect(0, 0, width, height);
+        const screenW = this.canvas.width;
+        const screenH = this.canvas.height;
 
-        // Grass Patches / Details
-        this.ctx.fillStyle = '#344327';
-        this.ctx.beginPath();
-        this.ctx.arc(200, 150, 80, 0, Math.PI * 2);
-        this.ctx.arc(600, 300, 110, 0, Math.PI * 2);
-        this.ctx.arc(400, 220, 60, 0, Math.PI * 2);
-        this.ctx.fill();
+        // Clear Screen
+        this.ctx.clearRect(0, 0, screenW, screenH);
 
-        // Waterhole
-        this.ctx.fillStyle = '#2b5c7e';
-        this.ctx.beginPath();
-        this.ctx.ellipse(400, 220, 90, 50, Math.PI / 8, 0, Math.PI * 2);
-        this.ctx.fill();
+        // Fixed Camera Translation: Player centered in canvas view
+        const camX = this.player.x - screenW / 2;
+        const camY = this.player.y - screenH / 2;
 
-        this.ctx.fillStyle = '#3a78a1';
-        this.ctx.beginPath();
-        this.ctx.ellipse(395, 215, 75, 40, Math.PI / 8, 0, Math.PI * 2);
-        this.ctx.fill();
+        this.ctx.save();
+        this.ctx.translate(-camX, -camY);
 
-        // Reserve Perimeter Fence
-        this.ctx.strokeStyle = this.state.fenceTier === 3 ? '#3498db' : (this.state.fenceTier === 2 ? '#bdc3c7' : '#8e44ad');
-        this.ctx.lineWidth = 4;
-        this.ctx.strokeRect(30, 30, width - 60, height - 60);
+        // 1. World Background (Wilderness Savannah)
+        this.ctx.fillStyle = '#223018';
+        this.ctx.fillRect(0, 0, this.world.width, this.world.height);
 
-        if (this.state.fenceTier === 3) {
-            // Glow effect for electric fence
-            this.ctx.strokeStyle = 'rgba(52, 152, 219, 0.4)';
-            this.ctx.lineWidth = 10;
-            this.ctx.strokeRect(30, 30, width - 60, height - 60);
+        // Grid lines for scale & spatial awareness
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+        this.ctx.lineWidth = 1;
+        const gridSize = 100;
+        for (let x = 0; x <= this.world.width; x += gridSize) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, 0);
+            this.ctx.lineTo(x, this.world.height);
+            this.ctx.stroke();
+        }
+        for (let y = 0; y <= this.world.height; y += gridSize) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(0, y);
+            this.ctx.lineTo(this.world.width, y);
+            this.ctx.stroke();
         }
 
-        // Central Ranger Camp / HQ
-        this.ctx.fillStyle = '#6e5132';
-        this.ctx.fillRect(50, 50, 70, 50);
-        this.ctx.fillStyle = '#e5a93c';
-        this.ctx.font = '12px sans-serif';
-        this.ctx.fillText(`Camp T${this.state.campTier}`, 60, 80);
+        // World Outer Boundary
+        this.ctx.strokeStyle = '#e74c3c';
+        this.ctx.lineWidth = 6;
+        this.ctx.strokeRect(0, 0, this.world.width, this.world.height);
 
-        // Render Animals
-        this.ctx.font = '24px serif';
+        // 2. Reserve Zone (Protected Fenced Enclosure)
+        this.ctx.fillStyle = '#2c3d20';
+        this.ctx.fillRect(this.reserve.x, this.reserve.y, this.reserve.width, this.reserve.height);
+
+        // Reserve Waterhole
+        const whX = this.reserve.x + 500;
+        const whY = this.reserve.y + 500;
+        this.ctx.fillStyle = '#234e6d';
+        this.ctx.beginPath();
+        this.ctx.ellipse(whX, whY, 140, 80, Math.PI / 6, 0, Math.PI * 2);
+        this.ctx.fill();
+
+        this.ctx.fillStyle = '#2f6891';
+        this.ctx.beginPath();
+        this.ctx.ellipse(whX - 10, whY - 5, 110, 60, Math.PI / 6, 0, Math.PI * 2);
+        this.ctx.fill();
+
+        // Central Camp HQ Building inside Reserve
+        const campX = this.reserve.x + 100;
+        const campY = this.reserve.y + 100;
+        this.ctx.fillStyle = '#5c4028';
+        this.ctx.fillRect(campX, campY, 100, 70);
+        this.ctx.strokeStyle = '#3a2717';
+        this.ctx.lineWidth = 3;
+        this.ctx.strokeRect(campX, campY, 100, 70);
+
+        this.ctx.fillStyle = '#e5a93c';
+        this.ctx.font = 'bold 13px sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText(`Camp T${this.state.campTier}`, campX + 50, campY + 35);
+
+        // Reserve Fence Perimeter
+        const fenceColor = this.state.fenceTier === 3 ? '#3498db' : (this.state.fenceTier === 2 ? '#bdc3c7' : '#8e44ad');
+        this.ctx.strokeStyle = fenceColor;
+        this.ctx.lineWidth = 6;
+        this.ctx.strokeRect(this.reserve.x, this.reserve.y, this.reserve.width, this.reserve.height);
+
+        if (this.state.fenceTier === 3) {
+            // Electric Fence Pulsing Glow
+            const pulse = 4 + Math.sin(performance.now() / 200) * 4;
+            this.ctx.strokeStyle = 'rgba(52, 152, 219, 0.4)';
+            this.ctx.lineWidth = 6 + pulse;
+            this.ctx.strokeRect(this.reserve.x, this.reserve.y, this.reserve.width, this.reserve.height);
+        }
+
+        // Fence Corner Posts
+        this.ctx.fillStyle = '#f39c12';
+        const corners = [
+            [this.reserve.x, this.reserve.y],
+            [this.reserve.x + this.reserve.width, this.reserve.y],
+            [this.reserve.x, this.reserve.y + this.reserve.height],
+            [this.reserve.x + this.reserve.width, this.reserve.y + this.reserve.height]
+        ];
+        corners.forEach(([cx, cy]) => {
+            this.ctx.beginPath();
+            this.ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+            this.ctx.fill();
+        });
+
+        // 3. Render Wild Trees
+        this.trees.forEach(tree => {
+            // Shadow
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+            this.ctx.beginPath();
+            this.ctx.arc(tree.x + 4, tree.y + 6, tree.radius, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            // Tree Canopy
+            this.ctx.fillStyle = '#1e5e27';
+            this.ctx.beginPath();
+            this.ctx.arc(tree.x, tree.y, tree.radius, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            // Inner Highlight
+            this.ctx.fillStyle = '#2ecc71';
+            this.ctx.beginPath();
+            this.ctx.arc(tree.x - 4, tree.y - 4, tree.radius * 0.5, 0, Math.PI * 2);
+            this.ctx.fill();
+        });
+
+        // 4. Render Wild Rocks
+        this.rocks.forEach(rock => {
+            // Shadow
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            this.ctx.beginPath();
+            this.ctx.ellipse(rock.x + 3, rock.y + 4, rock.radius, rock.radius * 0.7, 0, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            // Rock Body
+            this.ctx.fillStyle = '#7f8c8d';
+            this.ctx.beginPath();
+            this.ctx.ellipse(rock.x, rock.y, rock.radius, rock.radius * 0.75, 0, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            // Highlight
+            this.ctx.fillStyle = '#bdc3c7';
+            this.ctx.beginPath();
+            this.ctx.ellipse(rock.x - 3, rock.y - 2, rock.radius * 0.5, rock.radius * 0.4, 0, 0, Math.PI * 2);
+            this.ctx.fill();
+        });
+
+        // 5. Render Reserve Animals
+        this.ctx.font = '28px serif';
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
         this.renderedAnimals.forEach(animal => {
             this.ctx.fillText(animal.icon, animal.x, animal.y);
         });
+
+        // 6. Render Player Character
+        this.ctx.save();
+        this.ctx.translate(this.player.x, this.player.y);
+        this.ctx.rotate(this.player.angle);
+
+        // Player Shadow
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+        this.ctx.beginPath();
+        this.ctx.arc(2, 4, this.player.radius, 0, Math.PI * 2);
+        this.ctx.fill();
+
+        // Player Body (Ranger Outfit Color)
+        this.ctx.fillStyle = '#d35400'; // Ochre / Ranger jacket
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, this.player.radius, 0, Math.PI * 2);
+        this.ctx.fill();
+
+        this.ctx.strokeStyle = '#ffffff';
+        this.ctx.lineWidth = 2;
+        this.ctx.stroke();
+
+        // Direction Pointer / Hands
+        this.ctx.fillStyle = '#f39c12';
+        this.ctx.beginPath();
+        this.ctx.arc(14, -6, 5, 0, Math.PI * 2);
+        this.ctx.arc(14, 6, 5, 0, Math.PI * 2);
+        this.ctx.fill();
+
+        // Tool / Axe graphic when gathering
+        if (this.player.isGathering) {
+            const swing = Math.sin((this.player.gatherTimer / this.player.gatherDuration) * Math.PI) * 0.8;
+            this.ctx.rotate(swing);
+            this.ctx.fillStyle = '#e74c3c';
+            this.ctx.fillRect(12, -2, 18, 4);
+        }
+
+        this.ctx.restore();
+
+        // 7. Render Floating Feedback Texts
+        this.ctx.font = 'bold 16px sans-serif';
+        this.ctx.textAlign = 'center';
+        this.floatingTexts.forEach(ft => {
+            this.ctx.fillStyle = ft.color;
+            this.ctx.globalAlpha = ft.alpha;
+            this.ctx.fillText(ft.text, ft.x, ft.y);
+            this.ctx.globalAlpha = 1.0;
+        });
+
+        this.ctx.restore();
     }
 }
 
