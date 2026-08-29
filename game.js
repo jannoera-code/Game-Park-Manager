@@ -10,6 +10,10 @@ class ReserveGame {
         this.tickInterval = 100; // update every 100ms
         this.timeElapsedInDay = 0; // in seconds
 
+        // Asset Preloading
+        this.images = {};
+        this.preloadAssets();
+
         // Canvas & visual state
         this.canvas = document.getElementById('reserveCanvas');
         this.ctx = this.canvas ? this.canvas.getContext('2d') : null;
@@ -28,7 +32,12 @@ class ReserveGame {
             isGathering: false,
             gatherTimer: 0,
             gatherDuration: 0.4, // seconds
-            currentTarget: null
+            currentTarget: null,
+            image: Math.random() < 0.5 ? 'ranger1.png' : 'ranger2.png',
+            bobTimer: 0,
+            bobY: 0,
+            wobbleAngle: 0,
+            facingLeft: false
         };
 
         // Inputs
@@ -55,7 +64,29 @@ class ReserveGame {
         this.init();
     }
 
+    preloadAssets() {
+        const assetFiles = [
+            'ranger1.png', 'ranger2.png',
+            'tree.png', 'rock.png',
+            'elephant.png', 'impala.png', 'lion.png', 'rhino.png', 'zebra.png'
+        ];
+        assetFiles.forEach(file => {
+            const img = new Image();
+            img.src = file;
+            this.images[file] = img;
+        });
+    }
+
+    initRangers() {
+        RANGERS_DATA.forEach(ranger => {
+            if (!ranger.image) {
+                ranger.image = Math.random() < 0.5 ? 'ranger1.png' : 'ranger2.png';
+            }
+        });
+    }
+
     init() {
+        this.initRangers();
         this.resizeCanvas();
         window.addEventListener('resize', () => this.resizeCanvas());
 
@@ -306,6 +337,19 @@ class ReserveGame {
             }
         }
 
+        const isMoving = (dx !== 0 || dy !== 0);
+        if (dx < 0) this.player.facingLeft = true;
+        else if (dx > 0) this.player.facingLeft = false;
+
+        if (isMoving) {
+            this.player.bobTimer = (this.player.bobTimer || 0) + dt * 12;
+            this.player.bobY = Math.sin(this.player.bobTimer) * 4;
+            this.player.wobbleAngle = Math.sin(this.player.bobTimer * 0.5) * (5 * Math.PI / 180);
+        } else {
+            this.player.bobY += (0 - this.player.bobY) * Math.min(1, dt * 10);
+            this.player.wobbleAngle += (0 - this.player.wobbleAngle) * Math.min(1, dt * 10);
+        }
+
         // Calculate world mouse position based on camera offset (player centered)
         const camX = this.player.x - (this.canvas ? this.canvas.width / 2 : 400);
         const camY = this.player.y - (this.canvas ? this.canvas.height / 2 : 225);
@@ -546,9 +590,13 @@ class ReserveGame {
             else if (!hasCapacity) disableReason = 'Max Capacity Reached';
             else if (!meetFenceReq) disableReason = `Requires Tier ${animal.enclosureTierReq} Fence`;
 
+            const iconHTML = animal.image
+                ? `<img src="${animal.image}" alt="${animal.name}" class="card-thumb-img">`
+                : animal.icon;
+
             card.innerHTML = `
                 <div class="card-header">
-                    <div class="card-icon">${animal.icon}</div>
+                    <div class="card-icon">${iconHTML}</div>
                     <div class="card-title-group">
                         <h3>${animal.name}</h3>
                         <span class="card-sub">Owned: ${count}</span>
@@ -604,9 +652,13 @@ class ReserveGame {
                 `<span class="badge ${t.type === 'good' ? 'badge-good' : 'badge-bad'}">${t.name}</span>`
             ).join(' ');
 
+            const iconHTML = ranger.image
+                ? `<img src="${ranger.image}" alt="${ranger.name}" class="card-thumb-img">`
+                : '🤠';
+
             card.innerHTML = `
                 <div class="card-header">
-                    <div class="card-icon">🤠</div>
+                    <div class="card-icon">${iconHTML}</div>
                     <div class="card-title-group">
                         <h3>${ranger.name}</h3>
                         <span class="card-sub">${isHired ? 'Currently Hired' : 'Available for Hire'}</span>
@@ -783,11 +835,17 @@ class ReserveGame {
         this.renderedAnimals.push({
             id: animalDef.id,
             icon: animalDef.icon,
+            image: animalDef.image,
             x: startX,
             y: startY,
             targetX: minX + Math.random() * (maxX - minX),
             targetY: minY + Math.random() * (maxY - minY),
-            speed: 20 + Math.random() * 25
+            speed: 20 + Math.random() * 25,
+            bobTimer: Math.random() * 10,
+            bobY: 0,
+            wobbleAngle: 0,
+            facingLeft: false,
+            isMoving: true
         });
     }
 
@@ -806,13 +864,27 @@ class ReserveGame {
             if (dist < 10) {
                 animal.targetX = minX + Math.random() * (maxX - minX);
                 animal.targetY = minY + Math.random() * (maxY - minY);
+                animal.isMoving = false;
             } else {
+                animal.isMoving = true;
+                if (dx < 0) animal.facingLeft = true;
+                else if (dx > 0) animal.facingLeft = false;
+
                 animal.x += (dx / dist) * animal.speed * deltaSec;
                 animal.y += (dy / dist) * animal.speed * deltaSec;
 
                 // Clamp strictly inside reserve fence
                 animal.x = Math.max(minX, Math.min(animal.x, maxX));
                 animal.y = Math.max(minY, Math.min(animal.y, maxY));
+            }
+
+            if (animal.isMoving) {
+                animal.bobTimer = (animal.bobTimer || 0) + deltaSec * 8;
+                animal.bobY = Math.sin(animal.bobTimer) * 3;
+                animal.wobbleAngle = Math.sin(animal.bobTimer * 0.5) * (5 * Math.PI / 180);
+            } else {
+                animal.bobY += (0 - animal.bobY) * Math.min(1, deltaSec * 10);
+                animal.wobbleAngle += (0 - animal.wobbleAngle) * Math.min(1, deltaSec * 10);
             }
         });
     }
@@ -920,82 +992,100 @@ class ReserveGame {
         });
 
         // 3. Render Wild Trees
+        const treeImg = this.images['tree.png'];
         this.trees.forEach(tree => {
             // Shadow
             this.ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
             this.ctx.beginPath();
-            this.ctx.arc(tree.x + 4, tree.y + 6, tree.radius, 0, Math.PI * 2);
+            this.ctx.ellipse(tree.x + 2, tree.y + tree.radius - 2, tree.radius * 0.9, tree.radius * 0.3, 0, 0, Math.PI * 2);
             this.ctx.fill();
 
-            // Tree Canopy
-            this.ctx.fillStyle = '#1e5e27';
-            this.ctx.beginPath();
-            this.ctx.arc(tree.x, tree.y, tree.radius, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            // Inner Highlight
-            this.ctx.fillStyle = '#2ecc71';
-            this.ctx.beginPath();
-            this.ctx.arc(tree.x - 4, tree.y - 4, tree.radius * 0.5, 0, Math.PI * 2);
-            this.ctx.fill();
+            if (treeImg && treeImg.complete) {
+                const size = tree.radius * 2.8;
+                this.ctx.drawImage(treeImg, tree.x - size / 2, tree.y - size / 2, size, size);
+            } else {
+                this.ctx.fillStyle = '#1e5e27';
+                this.ctx.beginPath();
+                this.ctx.arc(tree.x, tree.y, tree.radius, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
         });
 
         // 4. Render Wild Rocks
+        const rockImg = this.images['rock.png'];
         this.rocks.forEach(rock => {
             // Shadow
             this.ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
             this.ctx.beginPath();
-            this.ctx.ellipse(rock.x + 3, rock.y + 4, rock.radius, rock.radius * 0.7, 0, 0, Math.PI * 2);
+            this.ctx.ellipse(rock.x + 3, rock.y + rock.radius * 0.5, rock.radius, rock.radius * 0.4, 0, 0, Math.PI * 2);
             this.ctx.fill();
 
-            // Rock Body
-            this.ctx.fillStyle = '#7f8c8d';
-            this.ctx.beginPath();
-            this.ctx.ellipse(rock.x, rock.y, rock.radius, rock.radius * 0.75, 0, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            // Highlight
-            this.ctx.fillStyle = '#bdc3c7';
-            this.ctx.beginPath();
-            this.ctx.ellipse(rock.x - 3, rock.y - 2, rock.radius * 0.5, rock.radius * 0.4, 0, 0, Math.PI * 2);
-            this.ctx.fill();
+            if (rockImg && rockImg.complete) {
+                const size = rock.radius * 2.4;
+                this.ctx.drawImage(rockImg, rock.x - size / 2, rock.y - size / 2, size, size);
+            } else {
+                this.ctx.fillStyle = '#7f8c8d';
+                this.ctx.beginPath();
+                this.ctx.ellipse(rock.x, rock.y, rock.radius, rock.radius * 0.75, 0, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
         });
 
         // 5. Render Reserve Animals
-        this.ctx.font = '28px serif';
-        this.ctx.textAlign = 'center';
-        this.ctx.textBaseline = 'middle';
         this.renderedAnimals.forEach(animal => {
-            this.ctx.fillText(animal.icon, animal.x, animal.y);
+            const animalImg = this.images[animal.image];
+            this.ctx.save();
+            this.ctx.translate(animal.x, animal.y + (animal.bobY || 0));
+            this.ctx.rotate(animal.wobbleAngle || 0);
+
+            if (animal.facingLeft) {
+                this.ctx.scale(-1, 1);
+            }
+
+            // Animal Shadow
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+            this.ctx.beginPath();
+            this.ctx.ellipse(0, 18, 16, 6, 0, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            if (animalImg && animalImg.complete) {
+                const size = 48;
+                this.ctx.drawImage(animalImg, -size / 2, -size / 2, size, size);
+            } else {
+                this.ctx.font = '28px serif';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.fillText(animal.icon, 0, 0);
+            }
+
+            this.ctx.restore();
         });
 
         // 6. Render Player Character
+        const playerImg = this.images[this.player.image];
         this.ctx.save();
-        this.ctx.translate(this.player.x, this.player.y);
-        this.ctx.rotate(this.player.angle);
+        this.ctx.translate(this.player.x, this.player.y + (this.player.bobY || 0));
+        this.ctx.rotate(this.player.wobbleAngle || 0);
+
+        if (this.player.facingLeft) {
+            this.ctx.scale(-1, 1);
+        }
 
         // Player Shadow
         this.ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
         this.ctx.beginPath();
-        this.ctx.arc(2, 4, this.player.radius, 0, Math.PI * 2);
+        this.ctx.ellipse(0, 18, 14, 5, 0, 0, Math.PI * 2);
         this.ctx.fill();
 
-        // Player Body (Ranger Outfit Color)
-        this.ctx.fillStyle = '#d35400'; // Ochre / Ranger jacket
-        this.ctx.beginPath();
-        this.ctx.arc(0, 0, this.player.radius, 0, Math.PI * 2);
-        this.ctx.fill();
-
-        this.ctx.strokeStyle = '#ffffff';
-        this.ctx.lineWidth = 2;
-        this.ctx.stroke();
-
-        // Direction Pointer / Hands
-        this.ctx.fillStyle = '#f39c12';
-        this.ctx.beginPath();
-        this.ctx.arc(14, -6, 5, 0, Math.PI * 2);
-        this.ctx.arc(14, 6, 5, 0, Math.PI * 2);
-        this.ctx.fill();
+        if (playerImg && playerImg.complete) {
+            const size = 48;
+            this.ctx.drawImage(playerImg, -size / 2, -size / 2, size, size);
+        } else {
+            this.ctx.fillStyle = '#d35400';
+            this.ctx.beginPath();
+            this.ctx.arc(0, 0, this.player.radius, 0, Math.PI * 2);
+            this.ctx.fill();
+        }
 
         // Tool / Axe graphic when gathering
         if (this.player.isGathering) {
