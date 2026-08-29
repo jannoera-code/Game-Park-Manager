@@ -102,6 +102,31 @@ const RANGERS_DATA = [
     }
 ];
 
+const BUILDINGS_DATA = [
+    {
+        id: 'ranger_hut',
+        name: 'Ranger Hut',
+        icon: '🏠',
+        woodCost: 20,
+        stoneCost: 10,
+        processedStoneCost: 0,
+        width: 80,
+        height: 80,
+        description: 'Provides a operational staging post for hired rangers to spawn and patrol.'
+    },
+    {
+        id: 'furnace',
+        name: 'Smelting Furnace',
+        icon: '🧱',
+        woodCost: 15,
+        stoneCost: 25,
+        processedStoneCost: 0,
+        width: 70,
+        height: 70,
+        description: 'Consumes Wood fuel to smelt Stone into Processed Stone over time.'
+    }
+];
+
 const CAMP_TIERS_DATA = [
     {
         tier: 1,
@@ -109,6 +134,7 @@ const CAMP_TIERS_DATA = [
         cost: 0,
         woodCost: 0,
         stoneCost: 0,
+        processedStoneCost: 0,
         baseCapacity: 5,
         description: 'A minimal tented ranger post with basic supplies.'
     },
@@ -118,6 +144,7 @@ const CAMP_TIERS_DATA = [
         cost: 1200,
         woodCost: 50,
         stoneCost: 30,
+        processedStoneCost: 10,
         baseCapacity: 12,
         description: 'Wooden lodge with communications gear and vehicle storage.'
     },
@@ -127,6 +154,7 @@ const CAMP_TIERS_DATA = [
         cost: 4000,
         woodCost: 150,
         stoneCost: 100,
+        processedStoneCost: 30,
         baseCapacity: 25,
         description: 'Comprehensive operations center with satellite tracking and veterinary hub.'
     }
@@ -139,6 +167,7 @@ const FENCE_TIERS_DATA = [
         cost: 0,
         woodCost: 0,
         stoneCost: 0,
+        processedStoneCost: 0,
         securityRating: 'Low',
         maxAnimalTier: 1,
         description: 'Simple wooden posts and wire. Suitable for small herbivores.'
@@ -149,6 +178,7 @@ const FENCE_TIERS_DATA = [
         cost: 1500,
         woodCost: 40,
         stoneCost: 25,
+        processedStoneCost: 15,
         securityRating: 'Medium',
         maxAnimalTier: 2,
         description: 'Heavy duty steel fencing to hold large herbivores like giraffes.'
@@ -159,6 +189,7 @@ const FENCE_TIERS_DATA = [
         cost: 4500,
         woodCost: 80,
         stoneCost: 60,
+        processedStoneCost: 40,
         securityRating: 'High',
         maxAnimalTier: 3,
         description: 'High voltage security enclosure required for big cats and elephants.'
@@ -169,8 +200,9 @@ const INITIAL_GAME_STATE = {
     funds: 1000,
     day: 1,
     dayProgress: 0, // 0 to 100 percentage
-    wood: 20,
-    stone: 0,
+    wood: 30,
+    stone: 15,
+    processedStone: 0,
     ownedAnimals: [
         { id: 'impala', count: 2 }
     ],
@@ -178,5 +210,6 @@ const INITIAL_GAME_STATE = {
         { id: 'ranger_kofi' }
     ],
     campTier: 1,
-    fenceTier: 1
+    fenceTier: 1,
+    placedBuildings: []
 };

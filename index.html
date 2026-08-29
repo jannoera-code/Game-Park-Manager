@@ -3,97 +3,157 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>African Wildlife Reserve Manager</title>
+    <title>African Wildlife Reserve Manager - Tactical Survival Hybrid</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="game-container">
-        <!-- Dashboard Header -->
-        <header class="dashboard-header">
-            <div class="title-bar">
-                <h1>🌍 Serengeti Wildlife Reserve</h1>
+    <!-- Full-Screen Canvas -->
+    <canvas id="reserveCanvas"></canvas>
+
+    <!-- UI Overlay Layer -->
+    <div id="ui-overlay" class="ui-overlay">
+
+        <!-- Top HUD Header -->
+        <header class="top-hud">
+            <div class="hud-brand">
+                <h1>🌍 Serengeti Reserve</h1>
                 <div class="day-badge">Day <span id="stat-day">1</span></div>
             </div>
 
-            <!-- Day Cycle Progress Bar (120s loop) -->
-            <div class="day-progress-container" title="Day Cycle Progress (2 Minutes)">
+            <!-- Day Progress Bar -->
+            <div class="day-progress-container" title="Day Cycle Progress (120s)">
                 <div id="day-progress-bar" class="day-progress-fill"></div>
             </div>
 
-            <div class="stats-grid">
-                <div class="stat-card">
+            <!-- Quick Stats Bar -->
+            <div class="stats-ribbon">
+                <div class="stat-pill">
                     <span class="stat-label">Funds</span>
                     <span id="stat-funds" class="stat-value">$1,000</span>
                 </div>
-                <div class="stat-card">
-                    <span class="stat-label">Net Daily Income</span>
-                    <span id="stat-net-income" class="stat-value positive">+$0/day</span>
+                <div class="stat-pill">
+                    <span class="stat-label">Daily Income</span>
+                    <span id="stat-net-income" class="stat-value positive">+$0/d</span>
                 </div>
-                <div class="stat-card">
-                    <span class="stat-label">Animal Capacity</span>
+                <div class="stat-pill">
+                    <span class="stat-label">Capacity</span>
                     <span id="stat-capacity" class="stat-value">2 / 5</span>
                 </div>
-                <div class="stat-card">
-                    <span class="stat-label">Wood Resources</span>
-                    <span id="stat-wood" class="stat-value">20 Wood</span>
+                <div class="stat-pill">
+                    <span class="stat-label">Wood</span>
+                    <span id="stat-wood" class="stat-value">30</span>
                 </div>
-                <div class="stat-card">
-                    <span class="stat-label">Stone Resources</span>
-                    <span id="stat-stone" class="stat-value">0 Stone</span>
+                <div class="stat-pill">
+                    <span class="stat-label">Stone</span>
+                    <span id="stat-stone" class="stat-value">15</span>
                 </div>
-                <div class="stat-card">
-                    <span class="stat-label">Camp Level</span>
-                    <span id="stat-camp-tier" class="stat-value">Tier 1</span>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-label">Fence Security</span>
-                    <span id="stat-fence-tier" class="stat-value">Tier 1</span>
+                <div class="stat-pill">
+                    <span class="stat-label">P-Stone</span>
+                    <span id="stat-pstone" class="stat-value">0</span>
                 </div>
             </div>
         </header>
 
-        <!-- Central Map View -->
-        <section class="map-section">
-            <div class="map-header">
-                <h2>🗺️ Reserve Tactical View</h2>
-                <span id="map-status" style="font-size: 0.85rem; color: #95a5a6;">Status: Operational</span>
-            </div>
-            <div class="map-canvas-container">
-                <canvas id="reserveCanvas" width="800" height="450"></canvas>
-            </div>
-        </section>
+        <!-- Notification / Status Banner -->
+        <div id="status-banner" class="status-banner hidden"></div>
 
-        <!-- Bottom Management Navigation & Panels -->
-        <section class="management-section">
-            <nav class="tab-navigation">
-                <button class="tab-btn active" data-tab="tab-animals">
-                    <span>🦁</span> Animal Market
-                </button>
-                <button class="tab-btn" data-tab="tab-rangers">
-                    <span>🤠</span> Ranger Staff
-                </button>
-                <button class="tab-btn" data-tab="tab-upgrades">
-                    <span>🏗️</span> Reserve Upgrades
-                </button>
-            </nav>
+        <!-- Right Side Floating Dock Controls -->
+        <nav class="side-dock">
+            <button class="dock-btn" data-panel="panel-animals" title="Animal Market">
+                <span class="dock-icon">🦁</span>
+                <span class="dock-label">Market</span>
+            </button>
+            <button class="dock-btn" data-panel="panel-rangers" title="Ranger Staff">
+                <span class="dock-icon">🤠</span>
+                <span class="dock-label">Rangers</span>
+            </button>
+            <button class="dock-btn" data-panel="panel-crafting" title="Crafting & Building">
+                <span class="dock-icon">🔨</span>
+                <span class="dock-label">Crafting</span>
+            </button>
+            <button class="dock-btn" data-panel="panel-upgrades" title="Reserve Upgrades">
+                <span class="dock-icon">🏗️</span>
+                <span class="dock-label">Upgrades</span>
+            </button>
+        </nav>
 
-            <div class="tab-content">
+        <!-- Floating Collapsible Drawer Panels -->
+        <div id="floating-panel-container" class="floating-panel-container hidden">
+            <div class="panel-header">
+                <h2 id="panel-title">Management Panel</h2>
+                <button id="close-panel-btn" class="close-btn">&times;</button>
+            </div>
+
+            <div class="panel-content-scroll">
                 <!-- Animal Market Panel -->
-                <div id="tab-animals" class="tab-panel active">
+                <div id="panel-animals" class="panel-section hidden">
                     <div id="animal-market-grid" class="panel-grid"></div>
                 </div>
 
-                <!-- Ranger Hiring Panel -->
-                <div id="tab-rangers" class="tab-panel">
+                <!-- Ranger Staff Panel -->
+                <div id="panel-rangers" class="panel-section hidden">
                     <div id="ranger-hiring-grid" class="panel-grid"></div>
                 </div>
 
+                <!-- Crafting & Building Panel -->
+                <div id="panel-crafting" class="panel-section hidden">
+                    <div id="crafting-grid" class="panel-grid"></div>
+                </div>
+
                 <!-- Upgrades Panel -->
-                <div id="tab-upgrades" class="tab-panel">
+                <div id="panel-upgrades" class="panel-section hidden">
                     <div id="upgrades-grid" class="panel-grid"></div>
                 </div>
             </div>
-        </section>
+        </div>
+
+        <!-- Furnace UI Modal -->
+        <div id="furnace-modal" class="modal-backdrop hidden">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h3>🧱 Smelting Furnace</h3>
+                    <button id="close-furnace-btn" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="furnace-status-row">
+                        <span>Status: <strong id="furnace-status-text">Idle</strong></span>
+                        <div class="furnace-progress-bar">
+                            <div id="furnace-progress-fill" class="furnace-progress-fill"></div>
+                        </div>
+                    </div>
+
+                    <div class="furnace-slots">
+                        <!-- Fuel Slot -->
+                        <div class="furnace-slot">
+                            <h4>🔥 Fuel (Wood)</h4>
+                            <div id="furnace-fuel-count" class="slot-count">0 / 20 Wood</div>
+                            <button id="add-fuel-btn" class="action-btn small-btn">+ Add Wood (5)</button>
+                        </div>
+
+                        <!-- Material Slot -->
+                        <div class="furnace-slot">
+                            <h4>🪨 Material (Stone)</h4>
+                            <div id="furnace-material-count" class="slot-count">0 / 20 Stone</div>
+                            <button id="add-material-btn" class="action-btn small-btn">+ Add Stone (5)</button>
+                        </div>
+
+                        <!-- Output Slot -->
+                        <div class="furnace-slot">
+                            <h4>✨ Output (Processed Stone)</h4>
+                            <div id="furnace-output-count" class="slot-count">0 Processed Stone</div>
+                            <button id="collect-output-btn" class="action-btn small-btn positive-btn">Collect Output</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controls Guide Footer Overlay -->
+        <div class="controls-guide">
+            <span><strong>[WASD / Arrows]</strong> Move Player</span>
+            <span><strong>[Left Click]</strong> Hit Trees/Rocks (5x) / Open Furnace</span>
+            <span><strong>[ESC]</strong> Cancel Placement</span>
+        </div>
     </div>
 
     <!-- Scripts -->
