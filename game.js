@@ -43,6 +43,10 @@ class ReserveGame {
             worldY: 0
         };
 
+        // Image Sprite Assets Registry & Preloading
+        this.sprites = {};
+        this.preloadSprites();
+
         // Environment Objects in the Wild
         this.trees = [];
         this.rocks = [];
@@ -53,6 +57,31 @@ class ReserveGame {
         this.lastFrameTime = performance.now();
 
         this.init();
+    }
+
+    preloadSprites() {
+        const assetFiles = [
+            'ranger1.png', 'ranger2.png',
+            'tree.png', 'rock.png',
+            'elephant.png', 'impala.png', 'lion.png', 'rhino.png', 'zebra.png'
+        ];
+
+        assetFiles.forEach(file => {
+            const img = new Image();
+            img.src = file;
+            this.sprites[file] = img;
+        });
+
+        // Player sprite randomization (ranger1.png or ranger2.png)
+        const rangerOptions = ['ranger1.png', 'ranger2.png'];
+        this.player.sprite = rangerOptions[Math.floor(Math.random() * rangerOptions.length)];
+
+        // Assign ranger sprites for candidates & staff
+        if (typeof RANGERS_DATA !== 'undefined') {
+            RANGERS_DATA.forEach((ranger, idx) => {
+                ranger.sprite = rangerOptions[idx % rangerOptions.length];
+            });
+        }
     }
 
     init() {
@@ -292,6 +321,8 @@ class ReserveGame {
         const moveX = dx * this.player.speed * dt;
         const moveY = dy * this.player.speed * dt;
 
+        this.player.isMoving = (dx !== 0 || dy !== 0);
+
         if (moveX !== 0) {
             const newX = this.player.x + moveX;
             if (!this.checkCollision(newX, this.player.y)) {
@@ -303,6 +334,13 @@ class ReserveGame {
             const newY = this.player.y + moveY;
             if (!this.checkCollision(this.player.x, newY)) {
                 this.player.y = newY;
+            }
+        }
+
+        if (this.player.isMoving) {
+            this.player.animDist = (this.player.animDist || 0) + Math.hypot(moveX, moveY);
+            if (dx !== 0) {
+                this.player.facingLeft = dx < 0;
             }
         }
 
@@ -604,9 +642,13 @@ class ReserveGame {
                 `<span class="badge ${t.type === 'good' ? 'badge-good' : 'badge-bad'}">${t.name}</span>`
             ).join(' ');
 
+            const spriteFile = ranger.sprite || 'ranger1.png';
+
             card.innerHTML = `
                 <div class="card-header">
-                    <div class="card-icon">🤠</div>
+                    <div class="card-icon" style="display: flex; align-items: center; justify-content: center; width: 48px; height: 48px;">
+                        <img src="${spriteFile}" alt="${ranger.name}" style="width: 32px; height: 32px; image-rendering: pixelated; object-fit: contain;">
+                    </div>
                     <div class="card-title-group">
                         <h3>${ranger.name}</h3>
                         <span class="card-sub">${isHired ? 'Currently Hired' : 'Available for Hire'}</span>
@@ -920,84 +962,104 @@ class ReserveGame {
         });
 
         // 3. Render Wild Trees
+        const treeImg = this.sprites['tree.png'];
         this.trees.forEach(tree => {
-            // Shadow
-            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-            this.ctx.beginPath();
-            this.ctx.arc(tree.x + 4, tree.y + 6, tree.radius, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            // Tree Canopy
-            this.ctx.fillStyle = '#1e5e27';
-            this.ctx.beginPath();
-            this.ctx.arc(tree.x, tree.y, tree.radius, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            // Inner Highlight
-            this.ctx.fillStyle = '#2ecc71';
-            this.ctx.beginPath();
-            this.ctx.arc(tree.x - 4, tree.y - 4, tree.radius * 0.5, 0, Math.PI * 2);
-            this.ctx.fill();
+            if (treeImg && treeImg.complete && treeImg.naturalWidth > 0) {
+                this.ctx.drawImage(treeImg, tree.x - 24, tree.y - 24, 48, 48);
+            } else {
+                // Fallback rendering
+                this.ctx.fillStyle = '#1e5e27';
+                this.ctx.beginPath();
+                this.ctx.arc(tree.x, tree.y, tree.radius, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
         });
 
         // 4. Render Wild Rocks
+        const rockImg = this.sprites['rock.png'];
         this.rocks.forEach(rock => {
-            // Shadow
-            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-            this.ctx.beginPath();
-            this.ctx.ellipse(rock.x + 3, rock.y + 4, rock.radius, rock.radius * 0.7, 0, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            // Rock Body
-            this.ctx.fillStyle = '#7f8c8d';
-            this.ctx.beginPath();
-            this.ctx.ellipse(rock.x, rock.y, rock.radius, rock.radius * 0.75, 0, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            // Highlight
-            this.ctx.fillStyle = '#bdc3c7';
-            this.ctx.beginPath();
-            this.ctx.ellipse(rock.x - 3, rock.y - 2, rock.radius * 0.5, rock.radius * 0.4, 0, 0, Math.PI * 2);
-            this.ctx.fill();
+            if (rockImg && rockImg.complete && rockImg.naturalWidth > 0) {
+                this.ctx.drawImage(rockImg, rock.x - 20, rock.y - 20, 40, 40);
+            } else {
+                // Fallback rendering
+                this.ctx.fillStyle = '#7f8c8d';
+                this.ctx.beginPath();
+                this.ctx.arc(rock.x, rock.y, rock.radius, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
         });
 
-        // 5. Render Reserve Animals
-        this.ctx.font = '28px serif';
-        this.ctx.textAlign = 'center';
-        this.ctx.textBaseline = 'middle';
+        // 5. Render Reserve Animals with Procedural Movement Animations
         this.renderedAnimals.forEach(animal => {
-            this.ctx.fillText(animal.icon, animal.x, animal.y);
+            const animalDef = ANIMALS_DATA.find(a => a.id === animal.id);
+            const spriteFile = animalDef ? animalDef.image : (animal.id + '.png');
+            const spriteImg = this.sprites[spriteFile];
+
+            const dx = animal.targetX - animal.x;
+            const dy = animal.targetY - animal.y;
+            const isMoving = Math.hypot(dx, dy) > 10;
+            const facingLeft = dx < 0;
+
+            this.ctx.save();
+            this.ctx.translate(animal.x, animal.y);
+
+            let bob = 0;
+            let wobble = 0;
+            if (isMoving) {
+                const animTime = performance.now() / 150;
+                bob = Math.abs(Math.sin(animTime)) * 4;
+                wobble = Math.sin(animTime) * (5 * Math.PI / 180);
+            }
+
+            this.ctx.translate(0, -bob);
+            this.ctx.rotate(wobble);
+
+            if (facingLeft) {
+                this.ctx.scale(-1, 1);
+            }
+
+            if (spriteImg && spriteImg.complete && spriteImg.naturalWidth > 0) {
+                this.ctx.drawImage(spriteImg, -20, -20, 40, 40);
+            } else {
+                this.ctx.font = '28px serif';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.fillText(animal.icon, 0, 0);
+            }
+
+            this.ctx.restore();
         });
 
-        // 6. Render Player Character
+        // 6. Render Player Character with Procedural Animations & Sprite
         this.ctx.save();
-        this.ctx.translate(this.player.x, this.player.y);
-        this.ctx.rotate(this.player.angle);
 
-        // Player Shadow
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-        this.ctx.beginPath();
-        this.ctx.arc(2, 4, this.player.radius, 0, Math.PI * 2);
-        this.ctx.fill();
+        let playerBob = 0;
+        let playerWobble = 0;
+        if (this.player.isMoving) {
+            const time = performance.now() / 120;
+            playerBob = Math.abs(Math.sin(time)) * 4;
+            playerWobble = Math.sin(time) * (5 * Math.PI / 180);
+        }
 
-        // Player Body (Ranger Outfit Color)
-        this.ctx.fillStyle = '#d35400'; // Ochre / Ranger jacket
-        this.ctx.beginPath();
-        this.ctx.arc(0, 0, this.player.radius, 0, Math.PI * 2);
-        this.ctx.fill();
+        this.ctx.translate(this.player.x, this.player.y - playerBob);
+        this.ctx.rotate(playerWobble);
 
-        this.ctx.strokeStyle = '#ffffff';
-        this.ctx.lineWidth = 2;
-        this.ctx.stroke();
+        if (this.player.facingLeft) {
+            this.ctx.scale(-1, 1);
+        }
 
-        // Direction Pointer / Hands
-        this.ctx.fillStyle = '#f39c12';
-        this.ctx.beginPath();
-        this.ctx.arc(14, -6, 5, 0, Math.PI * 2);
-        this.ctx.arc(14, 6, 5, 0, Math.PI * 2);
-        this.ctx.fill();
+        const playerSpriteImg = this.sprites[this.player.sprite || 'ranger1.png'];
+        if (playerSpriteImg && playerSpriteImg.complete && playerSpriteImg.naturalWidth > 0) {
+            this.ctx.drawImage(playerSpriteImg, -20, -20, 40, 40);
+        } else {
+            // Fallback rendering
+            this.ctx.fillStyle = '#d35400';
+            this.ctx.beginPath();
+            this.ctx.arc(0, 0, this.player.radius, 0, Math.PI * 2);
+            this.ctx.fill();
+        }
 
-        // Tool / Axe graphic when gathering
+        // Gathering Tool overlay animation
         if (this.player.isGathering) {
             const swing = Math.sin((this.player.gatherTimer / this.player.gatherDuration) * Math.PI) * 0.8;
             this.ctx.rotate(swing);
