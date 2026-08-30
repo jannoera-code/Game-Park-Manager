@@ -334,22 +334,6 @@
             </div>
         </div>
 
-        <!-- Top-Left Player Survival HUD -->
-        <div class="survival-hud">
-            <div class="survival-bar-group">
-                <div class="survival-label"><svg class="icon-svg" viewBox="0 0 24 24"><path fill="#82271a" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> HP</div>
-                <div class="survival-bar hp-bar"><div id="player-hp-fill" class="bar-fill hp-fill" style="width: 100%;"></div></div>
-            </div>
-            <div class="survival-bar-group">
-                <div class="survival-label"><svg class="icon-svg" viewBox="0 0 24 24"><path fill="#254861" d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg> Thirst</div>
-                <div class="survival-bar thirst-bar"><div id="player-thirst-fill" class="bar-fill thirst-fill" style="width: 100%;"></div></div>
-            </div>
-            <div class="survival-bar-group">
-                <div class="survival-label"><svg class="icon-svg" viewBox="0 0 24 24"><path fill="#6b3e10" d="M18.5 3A3.5 3.5 0 0 0 15 6.5c0 1.25.65 2.34 1.63 2.96L12.5 13.6 9.9 11c.62-.98 1.1-2.25 1.1-3.5A3.5 3.5 0 0 0 7.5 4a3.5 3.5 0 0 0-3.5 3.5c0 1.62.9 3 2.21 3.73l9.8 9.8c.73 1.3 2.11 2.2 3.73 2.2a3.5 3.5 0 0 0 3.5-3.5c0-1.25-.65-2.34-1.63-2.96l4.13-4.14c.98.62 2.25 1.1 3.5 1.1a3.5 3.5 0 0 0 3.5-3.5A3.5 3.5 0 0 0 20.73 6.7c-.73-1.31-2.11-2.2-3.73-2.2z"/></svg> Hunger</div>
-                <div class="survival-bar hunger-bar"><div id="player-hunger-fill" class="bar-fill hunger-fill" style="width: 100%;"></div></div>
-            </div>
-        </div>
-
         <!-- Top HUD Header -->
         <header class="top-hud">
             <div class="hud-brand">
@@ -365,34 +349,6 @@
             <div class="day-progress-container" title="Day Cycle Progress (120s)">
                 <div id="day-progress-bar" class="day-progress-fill"></div>
             </div>
-
-            <!-- Quick Stats Bar (Global HQ Storage) -->
-            <div class="stats-ribbon">
-                <div class="stat-pill">
-                    <span class="stat-label">Funds</span>
-                    <span id="stat-funds" class="stat-value">$1,000</span>
-                </div>
-                <div class="stat-pill">
-                    <span class="stat-label">Dosh</span>
-                    <span id="stat-dosh" class="stat-value" style="color: var(--accent-gold);">0</span>
-                </div>
-                <div class="stat-pill">
-                    <span class="stat-label">HQ Wood</span>
-                    <span id="stat-hq-wood" class="stat-value">30</span>
-                </div>
-                <div class="stat-pill">
-                    <span class="stat-label">HQ Stone</span>
-                    <span id="stat-hq-stone" class="stat-value">15</span>
-                </div>
-                <div class="stat-pill">
-                    <span class="stat-label">HQ P-Stone</span>
-                    <span id="stat-hq-pstone" class="stat-value">0</span>
-                </div>
-                <div class="stat-pill">
-                    <span class="stat-label">Capacity</span>
-                    <span id="stat-capacity" class="stat-value">0 / 5</span>
-                </div>
-            </div>
         </header>
 
         <!-- Notification / Status Banner -->
@@ -404,60 +360,29 @@
                 <span>📋 MANAGEMENT MENU</span>
             </div>
             <div class="sidebar-content">
-                <!-- Animals Section -->
-                <details class="sidebar-section" open>
-                    <summary class="section-header">🦁 Marketplace Animals</summary>
+                <!-- Flat Grid Sections without blocking accordions -->
+                <div class="sidebar-section">
+                    <div class="section-header">🦁 Marketplace Animals</div>
                     <div id="animal-market-grid" class="panel-grid"></div>
-                </details>
+                </div>
 
-                <!-- Rangers Section -->
-                <details class="sidebar-section">
-                    <summary class="section-header">🤠 Recruit Rangers</summary>
+                <div class="sidebar-section">
+                    <div class="section-header">🤠 Recruit Rangers</div>
                     <div id="ranger-hiring-grid" class="panel-grid"></div>
-                </details>
+                </div>
 
-                <!-- Crafting Section -->
-                <details class="sidebar-section">
-                    <summary class="section-header">🔨 Crafting & Building</summary>
+                <div class="sidebar-section">
+                    <div class="section-header">🔨 Crafting & Building</div>
                     <div id="crafting-grid" class="panel-grid"></div>
-                </details>
+                </div>
 
-                <!-- Upgrades Section -->
-                <details class="sidebar-section">
-                    <summary class="section-header">🏗️ Reserve Upgrades</summary>
+                <div class="sidebar-section">
+                    <div class="section-header">🏗️ Reserve Upgrades</div>
                     <div id="upgrades-grid" class="panel-grid"></div>
-                </details>
+                </div>
             </div>
         </aside>
 
-        <!-- Persistent 5-Slot Hotbar (Bottom Center) -->
-        <div id="hotbar-container" class="hotbar-container">
-            <div class="hotbar-slot active" data-slot="0">
-                <span class="hotbar-key">1</span>
-                <div class="hotbar-icon"></div>
-                <span class="hotbar-count"></span>
-            </div>
-            <div class="hotbar-slot" data-slot="1">
-                <span class="hotbar-key">2</span>
-                <div class="hotbar-icon"></div>
-                <span class="hotbar-count"></span>
-            </div>
-            <div class="hotbar-slot" data-slot="2">
-                <span class="hotbar-key">3</span>
-                <div class="hotbar-icon"></div>
-                <span class="hotbar-count"></span>
-            </div>
-            <div class="hotbar-slot" data-slot="3">
-                <span class="hotbar-key">4</span>
-                <div class="hotbar-icon"></div>
-                <span class="hotbar-count"></span>
-            </div>
-            <div class="hotbar-slot" data-slot="4">
-                <span class="hotbar-key">5</span>
-                <div class="hotbar-icon"></div>
-                <span class="hotbar-count"></span>
-            </div>
-        </div>
 
         <!-- Bottom-Left Circular Minimap Widget with Zoom Controls -->
         <div class="minimap-container">
@@ -568,17 +493,17 @@
             </div>
         </div>
 
-        <!-- Inventory Grid Modal ('E' Key) -->
+        <!-- Inventory Grid Modal ('E' Key / Camp Chest) -->
         <div id="inventory-modal" class="modal-backdrop hidden">
             <div class="modal-card inventory-card">
                 <div class="modal-header">
-                    <h3>🎒 Player Inventory & Hotbar (25 Slots)</h3>
+                    <h3>🧰 Camp Chest Global Storage (25 Slots)</h3>
                     <button id="close-inventory-btn" class="close-btn">&times;</button>
                 </div>
                 <div class="modal-body">
                     <div id="inventory-grid" class="inventory-grid"></div>
                     <div class="inventory-footer">
-                        <span>Tip: Slots 1-20 are Backpack, Slots 21-25 are Hotbar. Resources stack up to 100 per slot. Press <strong>[E]</strong> or <strong>[ESC]</strong> to close.</span>
+                        <span>Global storage for all harvested resources. Blueprints pull directly from this chest. Press <strong>[E]</strong> or <strong>[ESC]</strong> to close.</span>
                     </div>
                 </div>
             </div>
