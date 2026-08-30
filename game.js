@@ -5282,6 +5282,107 @@ class ReserveGame {
         ctx.restore();
     }
 
+    renderSavannahBackground(viewBounds) {
+        const tileSize = 48; // Base grid tile size
+        const minTileX = Math.floor(viewBounds.minX / tileSize) - 1;
+        const maxTileX = Math.ceil(viewBounds.maxX / tileSize) + 1;
+        const minTileY = Math.floor(viewBounds.minY / tileSize) - 1;
+        const maxTileY = Math.ceil(viewBounds.maxY / tileSize) + 1;
+
+        const reserveX1 = this.reserve.x;
+        const reserveX2 = this.reserve.x + this.reserve.width;
+        const reserveY1 = this.reserve.y;
+        const reserveY2 = this.reserve.y + this.reserve.height;
+
+        const isInsideReserve = (x, y) => (x >= reserveX1 && x < reserveX2 && y >= reserveY1 && y < reserveY2);
+
+        const time = Date.now() * 0.002;
+
+        for (let tx = minTileX; tx <= maxTileX; tx++) {
+            for (let ty = minTileY; ty <= maxTileY; ty++) {
+                const worldX = tx * tileSize;
+                const worldY = ty * tileSize;
+                const seed = hashCoordinates(tx, ty);
+                const randVal = seededRandom(seed);
+                const randVal2 = seededRandom(seed + 1);
+
+                const inReserve = isInsideReserve(worldX + tileSize / 2, worldY + tileSize / 2);
+
+                // Base ground color blend (arid dirt vs golden dry grass vs green grass)
+                if (inReserve) {
+                    if (randVal < 0.45) {
+                        this.ctx.fillStyle = '#4c6331'; // grassy reserve
+                    } else if (randVal < 0.8) {
+                        this.ctx.fillStyle = '#5c733a';
+                    } else {
+                        this.ctx.fillStyle = '#7a7a40'; // arid patch inside reserve
+                    }
+                } else {
+                    if (randVal < 0.4) {
+                        this.ctx.fillStyle = '#8f7748'; // arid dirt
+                    } else if (randVal < 0.75) {
+                        this.ctx.fillStyle = '#7a683a'; // dry savannah grass
+                    } else {
+                        this.ctx.fillStyle = '#4a5e2f'; // green grassy patch
+                    }
+                }
+
+                this.ctx.fillRect(worldX, worldY, tileSize, tileSize);
+
+                // Add scattered details (swaying grass tufts / pebbles)
+                if (randVal2 < 0.55) {
+                    // Grass tuft
+                    const tuftX = worldX + 8 + (randVal * 32);
+                    const tuftY = worldY + 12 + (randVal2 * 24);
+                    const sway = Math.sin(time + seed) * 3;
+
+                    this.ctx.strokeStyle = randVal < 0.5 ? '#3b5220' : (randVal < 0.8 ? '#9e8736' : '#2b3d16');
+                    this.ctx.lineWidth = 1.5;
+
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(tuftX, tuftY);
+                    this.ctx.quadraticCurveTo(tuftX - 4 + sway, tuftY - 6, tuftX - 6 + sway, tuftY - 10);
+                    this.ctx.moveTo(tuftX, tuftY);
+                    this.ctx.quadraticCurveTo(tuftX + sway, tuftY - 8, tuftX + sway, tuftY - 12);
+                    this.ctx.moveTo(tuftX, tuftY);
+                    this.ctx.quadraticCurveTo(tuftX + 4 + sway, tuftY - 6, tuftX + 6 + sway, tuftY - 9);
+                    this.ctx.stroke();
+                } else if (randVal2 < 0.7) {
+                    // Small pebble
+                    const pebbleX = worldX + 10 + (randVal * 28);
+                    const pebbleY = worldY + 10 + (randVal2 * 28);
+                    this.ctx.fillStyle = '#544634';
+                    this.ctx.beginPath();
+                    this.ctx.arc(pebbleX, pebbleY, 1.5, 0, Math.PI * 2);
+                    this.ctx.fill();
+                }
+            }
+        }
+
+        // Reserve Perimeter Border Line
+        this.ctx.strokeStyle = 'rgba(107, 62, 16, 0.4)';
+        this.ctx.lineWidth = 3;
+        this.ctx.strokeRect(this.reserve.x, this.reserve.y, this.reserve.width, this.reserve.height);
+
+        // Grid Lines (subtle earthy lines)
+        this.ctx.strokeStyle = 'rgba(60, 40, 20, 0.08)';
+        this.ctx.lineWidth = 1;
+        const startX = Math.floor(viewBounds.minX / tileSize) * tileSize;
+        const startY = Math.floor(viewBounds.minY / tileSize) * tileSize;
+        for (let x = startX; x <= viewBounds.maxX; x += tileSize) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, viewBounds.minY);
+            this.ctx.lineTo(x, viewBounds.maxY);
+            this.ctx.stroke();
+        }
+        for (let y = startY; y <= viewBounds.maxY; y += tileSize) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(viewBounds.minX, y);
+            this.ctx.lineTo(viewBounds.maxX, y);
+            this.ctx.stroke();
+        }
+    }
+
     // World Canvas Renderer
     render() {
         if (!this.ctx || !this.canvas) return;
@@ -5306,31 +5407,8 @@ class ReserveGame {
             maxY: camY + screenH + 100
         };
 
-        // 1. World Background Grass
-        this.ctx.fillStyle = '#1c2818';
-        this.ctx.fillRect(camX - 200, camY - 200, screenW + 400, screenH + 400);
-
-        // Grid Lines
-        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.02)';
-        this.ctx.lineWidth = 1;
-        const startX = Math.floor(viewBounds.minX / 100) * 100;
-        const startY = Math.floor(viewBounds.minY / 100) * 100;
-        for (let x = startX; x <= viewBounds.maxX; x += 100) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(x, viewBounds.minY);
-            this.ctx.lineTo(x, viewBounds.maxY);
-            this.ctx.stroke();
-        }
-        for (let y = startY; y <= viewBounds.maxY; y += 100) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(viewBounds.minX, y);
-            this.ctx.lineTo(viewBounds.maxX, y);
-            this.ctx.stroke();
-        }
-
-        // 2. Reserve Enclosure Area
-        this.ctx.fillStyle = '#26381e';
-        this.ctx.fillRect(this.reserve.x, this.reserve.y, this.reserve.width, this.reserve.height);
+        // 1. Savannah Biome Background
+        this.renderSavannahBackground(viewBounds);
 
         // Waterhole
         this.waterhole.render(this.ctx, this.images);
