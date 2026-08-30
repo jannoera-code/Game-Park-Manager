@@ -409,8 +409,53 @@ const FENCE_TIERS_DATA = [
     }
 ];
 
+const TUTORIAL_CHECKLISTS = [
+    {
+        id: 'basics',
+        title: 'Checklist 1: The Basics',
+        reward: 100,
+        tasks: [
+            { id: 'gather_wood', text: 'Gather Wood', type: 'item_count', item: 'wood', target: 10 },
+            { id: 'build_workbench', text: 'Build Workbench', type: 'building_placed', buildingType: 'workbench' },
+            { id: 'gather_stone', text: 'Gather Stone', type: 'item_count', item: 'stone', target: 5 },
+            { id: 'build_furnace', text: 'Build Furnace', type: 'building_placed', buildingType: 'furnace' }
+        ]
+    },
+    {
+        id: 'camp_setup',
+        title: 'Checklist 2: Camp Setup',
+        reward: 200,
+        tasks: [
+            { id: 'build_braai', text: 'Build Braai Grill', type: 'building_placed', buildingType: 'braai' },
+            { id: 'cook_food', text: 'Cook Food', type: 'event', eventKey: 'cookedFood' },
+            { id: 'boil_water', text: 'Boil Water', type: 'event', eventKey: 'boiledWater' },
+            { id: 'drink_water', text: 'Drink Water', type: 'event', eventKey: 'drankWater' }
+        ]
+    },
+    {
+        id: 'defense_expansion',
+        title: 'Checklist 3: Defense & Expansion',
+        reward: 300,
+        tasks: [
+            { id: 'place_fences', text: 'Place Fences', type: 'building_count', buildingType: 'fence_tier1', target: 4 },
+            { id: 'place_gates', text: 'Place Fence Gates', type: 'building_placed', buildingType: 'fence_gate' },
+            { id: 'assign_cabin', text: 'Assign Cabin', type: 'event', eventKey: 'assignedCabin' }
+        ]
+    },
+    {
+        id: 'survival_mechanics',
+        title: 'Checklist 4: Survival Mechanics',
+        reward: 400,
+        tasks: [
+            { id: 'experience_hunger_thirst', text: 'Experience Hunger/Thirst', type: 'event', eventKey: 'experiencedHungerThirst' },
+            { id: 'heal_damage', text: 'Heal Damage', type: 'event', eventKey: 'healedDamage' }
+        ]
+    }
+];
+
 const INITIAL_GAME_STATE = {
     funds: 1000,
+    dosh: 0,
     day: 1,
     dayProgress: 0, // 0 to 100 percentage
     wood: 30,
@@ -420,5 +465,8 @@ const INITIAL_GAME_STATE = {
     hiredRangers: [],
     campTier: 1,
     fenceTier: 1,
-    placedBuildings: []
+    placedBuildings: [],
+    isCreativeMode: false,
+    tutorialIndex: 0,
+    tutorialEvents: {}
 };

@@ -15,6 +15,12 @@
         <div class="main-menu-card">
             <h1 class="main-menu-title">🌍 SERENGETI RESERVE</h1>
             <p class="main-menu-subtitle">African Wildlife Reserve Management RPG</p>
+            <div class="creative-mode-toggle" style="display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.9rem; color: var(--accent-gold); margin-top: 4px;">
+                <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="creative-mode-checkbox" style="width: 16px; height: 16px; accent-color: var(--accent-gold); cursor: pointer;">
+                    <strong>🛠️ Creative Mode (Developer Mode)</strong>
+                </label>
+            </div>
             <div class="main-menu-actions">
                 <button id="start-new-game-btn" class="menu-btn primary-menu-btn"><svg class="icon-svg" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg> Start New Game</button>
                 <button id="open-load-menu-btn" class="menu-btn secondary-menu-btn"><svg class="icon-svg" viewBox="0 0 24 24"><path fill="currentColor" d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg> Load Game</button>
@@ -331,6 +337,10 @@
                     <span id="stat-funds" class="stat-value">$1,000</span>
                 </div>
                 <div class="stat-pill">
+                    <span class="stat-label">Dosh</span>
+                    <span id="stat-dosh" class="stat-value" style="color: var(--accent-gold);">0</span>
+                </div>
+                <div class="stat-pill">
                     <span class="stat-label">Daily Income</span>
                     <span id="stat-net-income" class="stat-value positive">+$0/d</span>
                 </div>
@@ -510,6 +520,10 @@
                             <button id="collect-output-btn" class="action-btn small-btn positive-btn">Collect Output</button>
                         </div>
                     </div>
+
+                    <div style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 10px; text-align: center;">
+                        <button id="boil-water-btn" class="action-btn positive-btn" style="padding: 8px;">💧 Boil Water (Requires Furnace Fuel)</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -566,11 +580,8 @@
 
         <!-- Dynamic UI Checklist Tutorial (Floating UI) -->
         <div id="tutorial-checklist" class="tutorial-checklist">
-            <h3>📋 Reserve Setup</h3>
-            <ul class="checklist-items">
-                <li id="task-wood" class="checklist-item"><span class="checkbox">[ ]</span> Punch trees for 10 Wood</li>
-                <li id="task-workbench" class="checklist-item"><span class="checkbox">[ ]</span> Craft and place a Workbench</li>
-                <li id="task-enclosure" class="checklist-item"><span class="checkbox">[ ]</span> Enclose the HQ and Waterhole with Fences and a Gate</li>
+            <h3 id="tutorial-title">📋 Reserve Setup</h3>
+            <ul id="tutorial-items" class="checklist-items">
             </ul>
         </div>
 
