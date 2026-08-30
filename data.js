@@ -83,8 +83,13 @@ const BUFF_OPTIONS = [
     { id: 'speed', title: '⚡ Cheetah Boots', description: '+10% Movement Speed', effect: { moveSpeedMult: 0.10 } },
     { id: 'yield', title: '🪓 Heavy Axe', description: '+1 Harvest Yield', effect: { harvestYieldBonus: 1 } },
     { id: 'workSpeed', title: '⏱️ Quick Hands', description: '+10% Interaction Speed', effect: { workSpeedMult: 0.10 } },
-    { id: 'income', title: '💰 Safari Promotion', description: '+15% Visitor Income', effect: { incomeMult: 0.15 } },
-    { id: 'capacity', title: '🎪 Reserve Permit', description: '+5 Animal Capacity', effect: { capacityBonus: 5 } }
+    { id: 'capacity', title: '🎒 Heavy Duty Pack', description: '+10 Carry Capacity', effect: { carryCapacityBonus: 10 } }
+];
+
+const WORKER_BUFF_OPTIONS = [
+    { id: 'speed', title: '⚡ Swift Runner', description: '+10% Movement Speed', effect: { moveSpeedMult: 1.10 } },
+    { id: 'carry', title: '🎒 Heavy Pack', description: '+10 Carry Capacity', effect: { carryCapacityBonus: 10 } },
+    { id: 'work', title: '⏱️ Quick Hands', description: '+10% Work Speed', effect: { workSpeedMult: 1.10 } }
 ];
 
 const SELLER_RESERVES = [
@@ -175,6 +180,15 @@ function generateRangerListings(count = 6) {
     }
     return listings;
 }
+
+const ENTITIES_DATA = {
+    diseased_corpse: {
+        id: 'diseased_corpse',
+        name: 'Diseased Corpse',
+        icon: '☠️',
+        description: 'Decaying remains of savanna wildlife. Can be scavenged for Raw Meat.'
+    }
+};
 
 const BUILDINGS_DATA = [
     {
@@ -411,6 +425,14 @@ const FENCE_TIERS_DATA = [
 
 const TUTORIAL_CHECKLISTS = [
     {
+        id: 'worker_setup',
+        title: 'Checklist 0: Staff Command',
+        reward: 100,
+        tasks: [
+            { id: 'assign_worker_job', text: 'Left-click your worker, assign them to the Reserve HQ, and give them a Job', type: 'event', eventKey: 'assignedWorkerJob' }
+        ]
+    },
+    {
         id: 'basics',
         title: 'Checklist 1: The Basics',
         reward: 100,
@@ -462,7 +484,8 @@ const INITIAL_GAME_STATE = {
     stone: 15,
     processedStone: 0,
     ownedAnimals: [],
-    rangers: [
+    rangers: [],
+    hiredRangers: [
         {
             id: 'ranger_init_1',
             name: 'Kofi Ndlovu',
@@ -476,25 +499,12 @@ const INITIAL_GAME_STATE = {
             hunger: 100,
             maxHunger: 100,
             thirst: 100,
-            maxThirst: 100
-        },
-        {
-            id: 'ranger_init_2',
-            name: 'Aminata Diallo',
-            age: 26,
-            gender: 'Female',
-            dailyWage: 30,
-            traits: [{ id: 'athletic', name: 'Athletic', type: 'good', description: '+15% Move Speed', effects: { moveSpeedMult: 1.15 } }],
-            image: 'assets/ranger2.png',
-            hp: 100,
-            maxHp: 100,
-            hunger: 100,
-            maxHunger: 100,
-            thirst: 100,
-            maxThirst: 100
+            maxThirst: 100,
+            assignedBuilding: null,
+            job: null,
+            buff: null
         }
     ],
-    hiredRangers: [],
     blueprints: [],
     campTier: 1,
     fenceTier: 1,
