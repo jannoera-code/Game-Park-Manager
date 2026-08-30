@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>African Wildlife Reserve Manager - RPG & Living AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Special+Elite&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -13,8 +16,8 @@
             <h1 class="main-menu-title">🌍 SERENGETI RESERVE</h1>
             <p class="main-menu-subtitle">African Wildlife Reserve Management RPG</p>
             <div class="main-menu-actions">
-                <button id="start-new-game-btn" class="menu-btn primary-menu-btn">🎮 Start New Game</button>
-                <button id="open-load-menu-btn" class="menu-btn secondary-menu-btn">📂 Load Game</button>
+                <button id="start-new-game-btn" class="menu-btn primary-menu-btn"><svg class="icon-svg" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg> Start New Game</button>
+                <button id="open-load-menu-btn" class="menu-btn secondary-menu-btn"><svg class="icon-svg" viewBox="0 0 24 24"><path fill="currentColor" d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg> Load Game</button>
             </div>
         </div>
     </div>
@@ -292,15 +295,15 @@
         <!-- Top-Left Player Survival HUD -->
         <div class="survival-hud">
             <div class="survival-bar-group">
-                <div class="survival-label">❤️ HP</div>
+                <div class="survival-label"><svg class="icon-svg" viewBox="0 0 24 24"><path fill="#82271a" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> HP</div>
                 <div class="survival-bar hp-bar"><div id="player-hp-fill" class="bar-fill hp-fill" style="width: 100%;"></div></div>
             </div>
             <div class="survival-bar-group">
-                <div class="survival-label">💧 Thirst</div>
+                <div class="survival-label"><svg class="icon-svg" viewBox="0 0 24 24"><path fill="#254861" d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg> Thirst</div>
                 <div class="survival-bar thirst-bar"><div id="player-thirst-fill" class="bar-fill thirst-fill" style="width: 100%;"></div></div>
             </div>
             <div class="survival-bar-group">
-                <div class="survival-label">🍖 Hunger</div>
+                <div class="survival-label"><svg class="icon-svg" viewBox="0 0 24 24"><path fill="#6b3e10" d="M18.5 3A3.5 3.5 0 0 0 15 6.5c0 1.25.65 2.34 1.63 2.96L12.5 13.6 9.9 11c.62-.98 1.1-2.25 1.1-3.5A3.5 3.5 0 0 0 7.5 4a3.5 3.5 0 0 0-3.5 3.5c0 1.62.9 3 2.21 3.73l9.8 9.8c.73 1.3 2.11 2.2 3.73 2.2a3.5 3.5 0 0 0 3.5-3.5c0-1.25-.65-2.34-1.63-2.96l4.13-4.14c.98.62 2.25 1.1 3.5 1.1a3.5 3.5 0 0 0 3.5-3.5A3.5 3.5 0 0 0 20.73 6.7c-.73-1.31-2.11-2.2-3.73-2.2z"/></svg> Hunger</div>
                 <div class="survival-bar hunger-bar"><div id="player-hunger-fill" class="bar-fill hunger-fill" style="width: 100%;"></div></div>
             </div>
         </div>
