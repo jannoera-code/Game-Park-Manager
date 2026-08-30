@@ -1851,10 +1851,13 @@ class ReserveGame {
 
         this.dayBaseline = null;
 
-        // Initial Seed Resources into 25-slot Inventory & Hotbar
-        this.inventory.addItem('wood', 30);
-        this.inventory.addItem('stone', 15);
-        this.inventory.addItem('sapling', 3);
+        // Tutorial state
+        this.tutorialState = {
+            woodCollected: false,
+            workbenchPlaced: false,
+            enclosureComplete: false,
+            completed: false
+        };
 
         // Asset Preloading
         this.images = {};
@@ -2043,10 +2046,7 @@ class ReserveGame {
         const startNewBtn = document.getElementById('start-new-game-btn');
         if (startNewBtn) {
             startNewBtn.addEventListener('click', () => {
-                const mainMenu = document.getElementById('main-menu-overlay');
-                if (mainMenu) mainMenu.classList.add('hidden');
-                this.isPaused = false;
-                if (this.audioManager) this.audioManager.startAudio();
+                this.startNewGame();
             });
         }
 
@@ -2267,6 +2267,33 @@ class ReserveGame {
                     this.minimapZoom = Math.max(this.minMinimapZoom, this.minimapZoom - 0.15);
                 }
             }, { passive: false });
+        }
+
+        const startStoryBtn = document.getElementById('start-story-btn');
+        if (startStoryBtn) {
+            startStoryBtn.addEventListener('click', () => {
+                const storyModal = document.getElementById('intro-story-modal');
+                if (storyModal) storyModal.classList.add('hidden');
+                this.isPaused = false;
+                this.player.isMovementLocked = false;
+            });
+        }
+
+        const confirmParkBtn = document.getElementById('confirm-park-name-btn');
+        if (confirmParkBtn) {
+            confirmParkBtn.addEventListener('click', () => {
+                const input = document.getElementById('park-name-input');
+                const customName = (input && input.value.trim()) ? input.value.trim() : 'Serengeti Reserve';
+                const hudName = document.getElementById('hud-park-name');
+                if (hudName) {
+                    hudName.textContent = `🌍 ${customName}`;
+                }
+                const celebModal = document.getElementById('celebration-modal');
+                if (celebModal) celebModal.classList.add('hidden');
+                this.isPaused = false;
+                this.player.isMovementLocked = false;
+                this.showNotification(`Welcome to ${customName}!`);
+            });
         }
 
         const closeWorkbenchBtn = document.getElementById('close-workbench-btn');
@@ -3390,6 +3417,237 @@ class ReserveGame {
         });
     }
 
+    startNewGame() {
+        this.state = JSON.parse(JSON.stringify(INITIAL_GAME_STATE));
+        this.inventory = new Inventory(25, 100);
+        this.player.x = 250;
+        this.player.y = 250;
+        this.player.hp = 100;
+        this.player.thirst = 100;
+        this.player.hunger = 100;
+
+        this.rangers = [];
+        this.furnaces = [];
+        this.braais = [];
+        this.renderedAnimals = [];
+        this.plantedSaplings = [];
+        this.droppedItems = [];
+
+        this.tutorialState = {
+            woodCollected: false,
+            workbenchPlaced: false,
+            enclosureComplete: false,
+            completed: false
+        };
+
+        const taskWood = document.getElementById('task-wood');
+        const taskWorkbench = document.getElementById('task-workbench');
+        const taskEnclosure = document.getElementById('task-enclosure');
+        [taskWood, taskWorkbench, taskEnclosure].forEach(el => {
+            if (el) {
+                el.classList.remove('completed');
+                const cb = el.querySelector('.checkbox');
+                if (cb) cb.textContent = '[ ]';
+            }
+        });
+
+        const mainMenu = document.getElementById('main-menu-overlay');
+        if (mainMenu) mainMenu.classList.add('hidden');
+
+        const storyModal = document.getElementById('intro-story-modal');
+        if (storyModal) storyModal.classList.remove('hidden');
+
+        this.isPaused = true;
+        this.player.isMovementLocked = true;
+        if (this.audioManager) this.audioManager.startAudio();
+
+        this.updateUI();
+    }
+
+    checkEnclosure() {
+        const fences = this.state.placedBuildings.filter(b => b.type === 'fence_tier1' || b.type === 'fence_gate');
+        if (fences.length === 0) return false;
+
+        const CELL = 20;
+        const margin = 200;
+
+        const minX = Math.floor((this.reserve.x - margin) / CELL) * CELL;
+        const maxX = Math.ceil((this.reserve.x + this.reserve.width + margin) / CELL) * CELL;
+        const minY = Math.floor((this.reserve.y - margin) / CELL) * CELL;
+        const maxY = Math.ceil((this.reserve.y + this.reserve.height + margin) / CELL) * CELL;
+
+        const cols = Math.floor((maxX - minX) / CELL) + 1;
+        const rows = Math.floor((maxY - minY) / CELL) + 1;
+
+        const grid = new Array(cols * rows).fill(false);
+
+        fences.forEach(f => {
+            const fMinX = f.x - f.width / 2;
+            const fMaxX = f.x + f.width / 2;
+            const fMinY = f.y - f.height / 2;
+            const fMaxY = f.y + f.height / 2;
+
+            const startCol = Math.max(0, Math.floor((fMinX - minX) / CELL));
+            const endCol = Math.min(cols - 1, Math.floor((fMaxX - minX) / CELL));
+            const startRow = Math.max(0, Math.floor((fMinY - minY) / CELL));
+            const endRow = Math.min(rows - 1, Math.floor((fMaxY - minY) / CELL));
+
+            for (let c = startCol; c <= endCol; c++) {
+                for (let r = startRow; r <= endRow; r++) {
+                    grid[c + r * cols] = true;
+                }
+            }
+        });
+
+        const visited = new Array(cols * rows).fill(false);
+        const queue = [];
+
+        for (let c = 0; c < cols; c++) {
+            let idx = c + 0 * cols;
+            if (!grid[idx]) { visited[idx] = true; queue.push([c, 0]); }
+            idx = c + (rows - 1) * cols;
+            if (!grid[idx] && !visited[idx]) { visited[idx] = true; queue.push([c, rows - 1]); }
+        }
+        for (let r = 0; r < rows; r++) {
+            let idx = 0 + r * cols;
+            if (!grid[idx] && !visited[idx]) { visited[idx] = true; queue.push([0, r]); }
+            idx = (cols - 1) + r * cols;
+            if (!grid[idx] && !visited[idx]) { visited[idx] = true; queue.push([cols - 1, r]); }
+        }
+
+        let head = 0;
+        const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+        while (head < queue.length) {
+            const [c, r] = queue[head++];
+            for (const [dc, dr] of dirs) {
+                const nc = c + dc;
+                const nr = r + dr;
+                if (nc >= 0 && nc < cols && nr >= 0 && nr < rows) {
+                    const nIdx = nc + nr * cols;
+                    if (!grid[nIdx] && !visited[nIdx]) {
+                        visited[nIdx] = true;
+                        queue.push([nc, nr]);
+                    }
+                }
+            }
+        }
+
+        const isReachableFromOutside = (rectMinX, rectMaxX, rectMinY, rectMaxY) => {
+            const startCol = Math.max(0, Math.floor((rectMinX - minX) / CELL));
+            const endCol = Math.min(cols - 1, Math.floor((rectMaxX - minX) / CELL));
+            const startRow = Math.max(0, Math.floor((rectMinY - minY) / CELL));
+            const endRow = Math.min(rows - 1, Math.floor((rectMaxY - minY) / CELL));
+
+            for (let c = startCol; c <= endCol; c++) {
+                for (let r = startRow; r <= endRow; r++) {
+                    if (visited[c + r * cols]) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+
+        const hqReachable = isReachableFromOutside(this.hq.x, this.hq.x + this.hq.width, this.hq.y, this.hq.y + this.hq.height);
+
+        const whMinX = this.waterhole.x - this.waterhole.radiusX;
+        const whMaxX = this.waterhole.x + this.waterhole.radiusX;
+        const whMinY = this.waterhole.y - this.waterhole.radiusY;
+        const whMaxY = this.waterhole.y + this.waterhole.radiusY;
+        const whReachable = isReachableFromOutside(whMinX, whMaxX, whMinY, whMaxY);
+
+        return !hqReachable && !whReachable;
+    }
+
+    updateTutorialChecklist() {
+        if (this.tutorialState.completed) return;
+
+        const taskWood = document.getElementById('task-wood');
+        const taskWorkbench = document.getElementById('task-workbench');
+        const taskEnclosure = document.getElementById('task-enclosure');
+
+        const totalWood = this.inventory.getItemCount('wood') + this.inventory.getItemCount('braai_wood');
+        if (totalWood >= 10) {
+            this.tutorialState.woodCollected = true;
+            if (taskWood) {
+                taskWood.classList.add('completed');
+                const cb = taskWood.querySelector('.checkbox');
+                if (cb) cb.textContent = '[✓]';
+            }
+        } else {
+            this.tutorialState.woodCollected = false;
+            if (taskWood) {
+                taskWood.classList.remove('completed');
+                const cb = taskWood.querySelector('.checkbox');
+                if (cb) cb.textContent = '[ ]';
+            }
+        }
+
+        const hasWorkbench = this.state.placedBuildings.some(b => b.type === 'workbench');
+        if (hasWorkbench) {
+            this.tutorialState.workbenchPlaced = true;
+            if (taskWorkbench) {
+                taskWorkbench.classList.add('completed');
+                const cb = taskWorkbench.querySelector('.checkbox');
+                if (cb) cb.textContent = '[✓]';
+            }
+        } else {
+            this.tutorialState.workbenchPlaced = false;
+            if (taskWorkbench) {
+                taskWorkbench.classList.remove('completed');
+                const cb = taskWorkbench.querySelector('.checkbox');
+                if (cb) cb.textContent = '[ ]';
+            }
+        }
+
+        const isEnclosed = this.checkEnclosure();
+        if (isEnclosed) {
+            this.tutorialState.enclosureComplete = true;
+            if (taskEnclosure) {
+                taskEnclosure.classList.add('completed');
+                const cb = taskEnclosure.querySelector('.checkbox');
+                if (cb) cb.textContent = '[✓]';
+            }
+        } else {
+            this.tutorialState.enclosureComplete = false;
+            if (taskEnclosure) {
+                taskEnclosure.classList.remove('completed');
+                const cb = taskEnclosure.querySelector('.checkbox');
+                if (cb) cb.textContent = '[ ]';
+            }
+        }
+
+        if (this.tutorialState.woodCollected && this.tutorialState.workbenchPlaced && this.tutorialState.enclosureComplete) {
+            this.tutorialState.completed = true;
+            this.triggerCelebrationModal();
+        }
+    }
+
+    triggerCelebrationModal() {
+        this.isPaused = true;
+        this.player.isMovementLocked = true;
+        const modal = document.getElementById('celebration-modal');
+        if (!modal) return;
+        this.createConfetti();
+        modal.classList.remove('hidden');
+    }
+
+    createConfetti() {
+        const container = document.getElementById('confetti-container');
+        if (!container) return;
+        container.innerHTML = '';
+        const colors = ['#f39c12', '#2ecc71', '#e74c3c', '#3498db', '#9b59b6', '#f1c40f'];
+        for (let i = 0; i < 70; i++) {
+            const piece = document.createElement('div');
+            piece.className = 'confetti-piece';
+            piece.style.left = Math.random() * 100 + '%';
+            piece.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+            piece.style.animationDelay = (Math.random() * 2.5) + 's';
+            piece.style.animationDuration = (2.5 + Math.random() * 2) + 's';
+            container.appendChild(piece);
+        }
+    }
+
     // Building Placement System
     startPlacementMode(buildingDef) {
         this.placementMode = {
@@ -3925,6 +4183,7 @@ class ReserveGame {
         const elPStone = document.getElementById('stat-pstone');
         if (elPStone) elPStone.textContent = this.inventory.getItemCount('processedStone');
 
+        this.updateTutorialChecklist();
         this.updateHotbarUI();
         this.syncRangersWithInfrastructure();
         this.renderAnimalMarket();
@@ -4538,6 +4797,32 @@ class ReserveGame {
                     this.ctx.textBaseline = 'middle';
                     this.ctx.fillText('RANGER HUT', 0, 0);
                 }
+
+            this.ctx.restore();
+        } else if (b.type === 'fence_tier1') {
+            this.ctx.save();
+            this.ctx.translate(b.x, b.y);
+
+            const fImg = this.images['fence-tier1.png'];
+            if (fImg && fImg.complete) {
+                this.ctx.drawImage(fImg, -b.width / 2, -b.height / 2, b.width, b.height);
+            } else {
+                this.ctx.fillStyle = '#8e44ad';
+                this.ctx.fillRect(-b.width / 2, -b.height / 2, b.width, b.height);
+            }
+
+            this.ctx.restore();
+        } else if (b.type === 'fence_gate') {
+            this.ctx.save();
+            this.ctx.translate(b.x, b.y);
+
+            const gImg = this.images['fence-tier1-employee-gate.png'];
+            if (gImg && gImg.complete) {
+                this.ctx.drawImage(gImg, -b.width / 2, -b.height / 2, b.width, b.height);
+            } else {
+                this.ctx.fillStyle = '#f39c12';
+                this.ctx.fillRect(-b.width / 2, -b.height / 2, b.width, b.height);
+            }
 
                 this.ctx.restore();
             }

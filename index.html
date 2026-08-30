@@ -226,7 +226,7 @@
         <!-- Top HUD Header -->
         <header class="top-hud">
             <div class="hud-brand">
-                <h1>🌍 Serengeti Reserve</h1>
+                <h1 id="hud-park-name">🌍 Serengeti Reserve</h1>
                 <div class="day-badge"><span id="digital-clock">06:00 ☀️</span> | Day <span id="stat-day">1</span> of Week <span id="stat-week">1</span></div>
                 <!-- Ranger Housing Warning Badge -->
                 <div id="housing-warning-badge" class="warning-badge hidden" title="Staff Unhoused! Build Ranger Huts so hired rangers can spawn.">
@@ -479,12 +479,64 @@
             </div>
         </div>
 
+        <!-- Dynamic UI Checklist Tutorial (Floating UI) -->
+        <div id="tutorial-checklist" class="tutorial-checklist">
+            <h3>📋 Reserve Setup</h3>
+            <ul class="checklist-items">
+                <li id="task-wood" class="checklist-item"><span class="checkbox">[ ]</span> Punch trees for 10 Wood</li>
+                <li id="task-workbench" class="checklist-item"><span class="checkbox">[ ]</span> Craft and place a Workbench</li>
+                <li id="task-enclosure" class="checklist-item"><span class="checkbox">[ ]</span> Enclose the HQ and Waterhole with Fences and a Gate</li>
+            </ul>
+        </div>
+
         <!-- Controls Guide Footer Overlay -->
         <div class="controls-guide">
             <span><strong>[WASD / Arrows]</strong> Move Player</span>
             <span><strong>[E]</strong> Open Inventory Grid</span>
             <span><strong>[Left Click]</strong> Harvest / Interact / Open Furnace</span>
             <span><strong>[ESC]</strong> Close / Cancel</span>
+        </div>
+    </div>
+
+    <!-- Intro Story Modal -->
+    <div id="intro-story-modal" class="modal-backdrop hidden">
+        <div class="modal-card story-card">
+            <div class="modal-header">
+                <h3>📖 Welcome to the Wild</h3>
+            </div>
+            <div class="modal-body" style="text-align: center;">
+                <p style="line-height: 1.6; font-size: 1.05rem; color: #e2e8f0; margin-bottom: 15px;">
+                    "Welcome to the wild. You've inherited a patch of untouched land. Your only companion is Jock, a loyal camp dog with a golden coat and highly alert, pointy ears. It's time to build your reserve."
+                </p>
+                <button id="start-story-btn" class="action-btn positive-btn" style="padding: 12px; font-size: 1.05rem;">
+                    🐾 Begin Building Reserve
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Celebration & Park Naming Modal -->
+    <div id="celebration-modal" class="modal-backdrop hidden">
+        <div id="confetti-container" class="confetti-container"></div>
+        <div class="modal-card celebration-card">
+            <div class="modal-header">
+                <h3>🎉 Enclosure Complete!</h3>
+            </div>
+            <div class="modal-body" style="text-align: center;">
+                <h2 style="color: var(--accent-gold); margin-bottom: 10px;">Congratulations!</h2>
+                <p style="font-size: 0.95rem; color: #e2e8f0; margin-bottom: 15px;">
+                    You have successfully built your Workbench and enclosed Reserve HQ and the Waterhole with perimeter fencing!
+                </p>
+                <div style="background: var(--bg-glass-card); padding: 15px; border-radius: 10px; border: 1px solid var(--border-color); margin-bottom: 15px;">
+                    <label for="park-name-input" style="display: block; font-weight: bold; color: var(--accent-gold); margin-bottom: 8px;">
+                        Name Your Wildlife Reserve:
+                    </label>
+                    <input type="text" id="park-name-input" placeholder="e.g. Serengeti Reserve" value="Serengeti Reserve" style="width: 100%; padding: 10px; border-radius: 6px; background: #1a252c; color: var(--text-main); border: 1px solid var(--border-color); font-size: 1rem; text-align: center;">
+                </div>
+                <button id="confirm-park-name-btn" class="action-btn positive-btn" style="padding: 12px; font-size: 1.05rem;">
+                    🚀 Open Reserve
+                </button>
+            </div>
         </div>
     </div>
 
