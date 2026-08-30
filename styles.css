@@ -126,6 +126,10 @@ canvas#reserveCanvas {
     background: linear-gradient(90deg, #2980b9, #3498db);
 }
 
+.hunger-fill {
+    background: linear-gradient(90deg, #d35400, #f39c12);
+}
+
 /* Top HUD Header */
 .top-hud {
     background: var(--bg-glass);
