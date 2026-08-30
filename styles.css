@@ -318,6 +318,165 @@ canvas#reserveCanvas {
     pointer-events: auto;
 }
 
+/* Dynamic Entity Hover UI Tooltip */
+.entity-hover-tooltip {
+    position: fixed;
+    z-index: 999;
+    pointer-events: none;
+    background: rgba(15, 22, 28, 0.92);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--accent-gold);
+    border-radius: 10px;
+    padding: 10px 14px;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.7);
+    min-width: 190px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transform: translate(15px, 15px);
+    transition: opacity 0.15s ease, transform 0.05s linear;
+}
+
+.entity-hover-tooltip.hidden {
+    display: none;
+    opacity: 0;
+}
+
+.tooltip-flavor-header {
+    background: rgba(243, 156, 18, 0.15);
+    border: 1px solid var(--accent-gold);
+    border-radius: 6px;
+    padding: 6px 8px;
+    margin-bottom: 2px;
+}
+
+.tooltip-flavor-header.hidden {
+    display: none;
+}
+
+.companion-tag {
+    font-size: 0.65rem;
+    font-weight: 800;
+    color: var(--accent-gold);
+    letter-spacing: 1px;
+    display: block;
+}
+
+.companion-flavor {
+    font-size: 0.72rem;
+    color: #f1c40f;
+    font-style: italic;
+    margin-top: 2px;
+}
+
+.tooltip-title {
+    font-size: 0.95rem;
+    font-weight: bold;
+    color: var(--text-main);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 4px;
+}
+
+.tooltip-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tooltip-bar-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
+}
+
+.tooltip-label {
+    width: 55px;
+    color: var(--text-muted);
+    font-weight: bold;
+}
+
+.tooltip-bar {
+    flex: 1;
+    height: 8px;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tooltip-fill {
+    height: 100%;
+    transition: width 0.15s ease;
+}
+
+.tooltip-val {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    width: 45px;
+    text-align: right;
+    font-family: monospace;
+}
+
+/* Accommodation Visual Slot Arrays */
+.accommodation-section {
+    background: var(--bg-glass-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.slots-array-grid {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.slot-card {
+    flex: 1;
+    min-width: 130px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 2px dashed var(--border-color);
+    border-radius: 10px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+.slot-card.filled {
+    border-style: solid;
+    border-color: var(--accent-green);
+    background: rgba(46, 204, 113, 0.1);
+}
+
+.slot-card.empty {
+    border-color: var(--border-color);
+}
+
+.slot-icon {
+    font-size: 1.8rem;
+}
+
+.slot-title {
+    font-size: 0.85rem;
+    font-weight: bold;
+    color: var(--text-main);
+}
+
+.slot-sub {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
 /* Player Survival HUD (Top-Left) */
 .survival-hud {
     position: absolute;

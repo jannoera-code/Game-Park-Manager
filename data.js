@@ -308,6 +308,26 @@ const WORKBENCH_CRAFTABLES = [
         woodCost: 5,
         processedStoneCost: 3,
         description: 'Crafted shovel tool for multi-purpose earthwork.'
+    },
+    {
+        id: 'dog_meal',
+        type: 'item',
+        name: 'Dog Meal',
+        icon: '🍖',
+        scrapsCost: 2,
+        description: 'Nutritious companion food crafted from meat scraps. Placed in a Dog Bowl to feed Jock.'
+    },
+    {
+        id: 'dog_bowl',
+        type: 'building',
+        name: 'Dog Bowl',
+        icon: '🥣',
+        woodCost: 5,
+        stoneCost: 0,
+        processedStoneCost: 0,
+        width: 40,
+        height: 40,
+        description: 'Feeding bowl for Jock. Insert Dog Meals to keep your loyal companion fed.'
     }
 ];
 

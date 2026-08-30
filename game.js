@@ -596,7 +596,7 @@ class PlantedSapling {
 class DroppedItem {
     constructor(id, type, amount, x, y) {
         this.id = id;
-        this.type = type; // 'wood', 'stone', 'sapling'
+        this.type = type; // 'wood', 'stone', 'sapling', 'scraps'
         this.amount = amount;
         this.x = x;
         this.y = y;
@@ -643,7 +643,7 @@ class DroppedItem {
         ctx.ellipse(0, this.z + 8, 12, 4, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        const iconMap = { wood: '🪵', stone: '🪨', sapling: '🌱' };
+        const iconMap = { wood: '🪵', stone: '🪨', sapling: '🌱', scraps: '🍖' };
         ctx.font = '16px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -654,6 +654,68 @@ class DroppedItem {
             ctx.font = 'bold 10px sans-serif';
             ctx.fillText(`x${this.amount}`, 10, 8);
         }
+
+        ctx.restore();
+    }
+}
+
+/**
+ * DogBowl Structure Class
+ */
+class DogBowl {
+    constructor(id, x, y, width = 40, height = 40) {
+        this.id = id;
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+        this.meals = 0;
+        this.maxMeals = 5;
+    }
+
+    addMeal(amount = 1) {
+        const added = Math.min(amount, this.maxMeals - this.meals);
+        this.meals += added;
+        return added;
+    }
+
+    eatMeal() {
+        if (this.meals > 0) {
+            this.meals--;
+            return true;
+        }
+        return false;
+    }
+
+    render(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath();
+        ctx.ellipse(0, 10, 16, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#7f8c8d';
+        ctx.beginPath();
+        ctx.arc(0, 0, 16, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#2c3e50';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        if (this.meals > 0) {
+            ctx.fillStyle = '#e67e22';
+            ctx.beginPath();
+            ctx.arc(0, 0, 10, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🥣', 0, -1);
 
         ctx.restore();
     }
@@ -1144,13 +1206,26 @@ class Player {
  */
 class DogJock {
     constructor(hqX, hqY) {
+        this.name = 'Jock';
         this.hqX = hqX;
         this.hqY = hqY;
         this.x = hqX + 20;
         this.y = hqY + 20;
-        this.speed = 40;
+        this.speed = 50;
         this.targetX = this.x;
         this.targetY = this.y;
+        this.state = 'wandering'; // 'wandering', 'thirsty', 'drinking', 'hungry', 'eating'
+
+        this.hp = 100;
+        this.maxHp = 100;
+        this.thirst = 90;
+        this.maxThirst = 100;
+        this.hunger = 90;
+        this.maxHunger = 100;
+
+        this.drinkTimer = 0;
+        this.eatTimer = 0;
+
         this.pickNewTarget();
 
         this.bobTimer = Math.random() * 10;
@@ -1165,12 +1240,79 @@ class DogJock {
         this.targetY = this.hqY + (Math.random() - 0.5) * radius * 2;
     }
 
-    update(dt) {
+    update(dt, waterhole, dogBowls = []) {
+        // Deplete thirst and hunger over time
+        this.thirst = Math.max(0, this.thirst - dt * 0.8);
+        this.hunger = Math.max(0, this.hunger - dt * 0.5);
+
+        if (this.state === 'wandering') {
+            if (this.thirst <= 40) {
+                this.state = 'thirsty';
+            } else if (this.hunger <= 40) {
+                this.state = 'hungry';
+            } else {
+                this.moveTowardsTarget(dt);
+                const distToTarget = Math.hypot(this.targetX - this.x, this.targetY - this.y);
+                if (distToTarget < 10) {
+                    if (Math.random() < 0.02) this.pickNewTarget();
+                }
+            }
+        } else if (this.state === 'thirsty') {
+            this.targetX = waterhole.x;
+            this.targetY = waterhole.y;
+            this.moveTowardsTarget(dt);
+
+            const distToWaterhole = Math.hypot(waterhole.x - this.x, waterhole.y - this.y);
+            if (distToWaterhole < waterhole.radiusY + 20) {
+                this.state = 'drinking';
+                this.drinkTimer = 3.0;
+            }
+        } else if (this.state === 'drinking') {
+            this.drinkTimer -= dt;
+            waterhole.drink(dt * 4);
+            this.thirst = Math.min(this.maxThirst, this.thirst + dt * 25);
+
+            if (this.drinkTimer <= 0 || this.thirst >= this.maxThirst) {
+                this.state = 'wandering';
+                this.pickNewTarget();
+            }
+        } else if (this.state === 'hungry') {
+            // Find filled dog bowl
+            const filledBowl = dogBowls.find(b => b.meals > 0);
+            if (filledBowl) {
+                this.targetX = filledBowl.x;
+                this.targetY = filledBowl.y;
+                this.moveTowardsTarget(dt);
+
+                const distToBowl = Math.hypot(filledBowl.x - this.x, filledBowl.y - this.y);
+                if (distToBowl < 25) {
+                    if (filledBowl.eatMeal()) {
+                        this.state = 'eating';
+                        this.eatTimer = 3.0;
+                    }
+                }
+            } else {
+                // If no filled bowl, stay wandering
+                this.state = 'wandering';
+                this.pickNewTarget();
+            }
+        } else if (this.state === 'eating') {
+            this.eatTimer -= dt;
+            this.hunger = Math.min(this.maxHunger, this.hunger + dt * 25);
+
+            if (this.eatTimer <= 0 || this.hunger >= this.maxHunger) {
+                this.state = 'wandering';
+                this.pickNewTarget();
+            }
+        }
+    }
+
+    moveTowardsTarget(dt) {
         const dx = this.targetX - this.x;
         const dy = this.targetY - this.y;
         const dist = Math.hypot(dx, dy);
 
-        if (dist > 5) {
+        if (dist > 3) {
             if (dx < 0) this.facingLeft = true;
             else if (dx > 0) this.facingLeft = false;
 
@@ -1181,9 +1323,6 @@ class DogJock {
             this.bobY = Math.sin(this.bobTimer) * 3;
             this.wobbleAngle = Math.sin(this.bobTimer * 0.5) * (5 * Math.PI / 180);
         } else {
-            if (Math.random() < 0.02) {
-                this.pickNewTarget();
-            }
             this.bobY += (0 - this.bobY) * Math.min(1, dt * 10);
             this.wobbleAngle += (0 - this.wobbleAngle) * Math.min(1, dt * 10);
         }
@@ -1306,10 +1445,17 @@ class Animal {
         this.y = y;
         this.reserveBounds = reserveBounds;
 
+        this.hp = 100;
+        this.maxHp = 100;
+        this.hunger = 80 + Math.random() * 20; // 0 to 100
+        this.maxHunger = 100;
+        this.thirst = 80 + Math.random() * 20; // 100 (full) to 0 (thirsty)
+        this.maxThirst = 100;
+
         this.speed = 25 + Math.random() * 20;
-        this.state = 'wandering'; // 'wandering', 'thirsty', 'drinking'
-        this.thirst = Math.random() * 40; // 0 (full) to 100 (thirsty)
+        this.state = 'wandering'; // 'wandering', 'thirsty', 'drinking', 'grazing'
         this.drinkTimer = 0;
+        this.grazeTimer = 0;
 
         this.targetX = x;
         this.targetY = y;
@@ -1332,14 +1478,22 @@ class Animal {
         this.targetY = minY + Math.random() * (maxY - minY);
     }
 
+    isHerbivore() {
+        return ['impala', 'zebra', 'elephant', 'rhino'].includes(this.speciesId);
+    }
+
     update(dt, waterhole) {
-        // Increase thirst over time
-        this.thirst = Math.min(100, this.thirst + dt * 2.5);
+        // Deplete thirst and hunger over time
+        this.thirst = Math.max(0, this.thirst - dt * 1.5);
+        this.hunger = Math.max(0, this.hunger - dt * 1.0);
 
         // AI State Machine Logic
         if (this.state === 'wandering') {
-            if (this.thirst >= 75) {
+            if (this.thirst <= 30) {
                 this.state = 'thirsty';
+            } else if (this.isHerbivore() && this.hunger <= 50) {
+                this.state = 'grazing';
+                this.grazeTimer = 5.0; // Graze for 5 seconds
             } else {
                 this.moveTowardsTarget(dt);
                 const distToTarget = Math.hypot(this.targetX - this.x, this.targetY - this.y);
@@ -1361,9 +1515,17 @@ class Animal {
         } else if (this.state === 'drinking') {
             this.drinkTimer -= dt;
             waterhole.drink(dt * 3);
-            this.thirst = Math.max(0, this.thirst - dt * 25);
+            this.thirst = Math.min(this.maxThirst, this.thirst + dt * 25);
 
-            if (this.drinkTimer <= 0 || this.thirst <= 0) {
+            if (this.drinkTimer <= 0 || this.thirst >= this.maxThirst) {
+                this.state = 'wandering';
+                this.pickNewWanderTarget();
+            }
+        } else if (this.state === 'grazing') {
+            this.grazeTimer -= dt;
+            this.hunger = Math.min(this.maxHunger, this.hunger + dt * 15);
+
+            if (this.grazeTimer <= 0 || this.hunger >= this.maxHunger) {
                 this.state = 'wandering';
                 this.pickNewWanderTarget();
             }
@@ -1448,6 +1610,13 @@ class Ranger {
 
         this.traits = data.traits || [];
         this.image = data.image || 'ranger1.png';
+
+        this.hp = 100;
+        this.maxHp = 100;
+        this.hunger = 85 + Math.random() * 15;
+        this.maxHunger = 100;
+        this.thirst = 85 + Math.random() * 15;
+        this.maxThirst = 100;
 
         // Apply Trait Modifiers
         let speedMult = 1.0;
@@ -1823,14 +1992,17 @@ class ReserveGame {
         this.player = new Player(250, 250);
         this.waterhole = new Waterhole(this.reserve.x + 500, this.reserve.y + 500);
         this.dogJock = new DogJock(this.hq.x + 72, this.hq.y + 72);
+        this.jockAssignedBuilding = 'hq'; // 'hq' or rangerHut.id
 
         this.droppedItems = [];
         this.plantedSaplings = [];
         this.rangers = [];
         this.furnaces = [];
         this.braais = [];
+        this.dogBowls = [];
         this.renderedAnimals = [];
         this.floatingTexts = [];
+        this.activeDogBowl = null;
 
         // Marketplace Dynamic Listings
         this.animalMarketListings = generateAnimalListings(6);
@@ -1986,6 +2158,7 @@ class ReserveGame {
                 this.mouse.worldY = camY + this.mouse.screenY;
 
                 this.updatePlacementCursor();
+                this.updateHoverTooltip(e);
             });
 
             this.canvas.addEventListener('mousedown', (e) => {
@@ -2019,7 +2192,8 @@ class ReserveGame {
         const modalsToClose = [
             'furnace-modal', 'braai-modal', 'workbench-modal', 'inventory-modal',
             'container-modal', 'crate-modal', 'load-game-modal', 'save-game-modal',
-            'weekly-recap-modal', 'hq-modal', 'ranger-hut-modal', 'morning-recap-modal'
+            'weekly-recap-modal', 'hq-modal', 'ranger-hut-modal', 'morning-recap-modal',
+            'dog-bowl-modal'
         ];
 
         modalsToClose.forEach(id => {
@@ -2394,6 +2568,32 @@ class ReserveGame {
             closeFurnaceBtn.addEventListener('click', () => this.closeFurnaceModal());
         }
 
+        const closeDogBowlBtn = document.getElementById('close-dog-bowl-btn');
+        if (closeDogBowlBtn) {
+            closeDogBowlBtn.addEventListener('click', () => this.closeDogBowlModal());
+        }
+
+        const insertDogMealBtn = document.getElementById('insert-dog-meal-btn');
+        if (insertDogMealBtn) {
+            insertDogMealBtn.addEventListener('click', () => {
+                if (this.activeDogBowl) {
+                    if (this.inventory.getItemCount('dog_meal') >= 1) {
+                        if (this.activeDogBowl.meals < this.activeDogBowl.maxMeals) {
+                            this.inventory.consumeItem('dog_meal', 1);
+                            this.activeDogBowl.addMeal(1);
+                            this.updateDogBowlModalUI();
+                            this.updateUI();
+                            this.showNotification('Inserted 1 Dog Meal into Dog Bowl!');
+                        } else {
+                            this.showNotification('Dog Bowl is full!');
+                        }
+                    } else {
+                        this.showNotification('No Dog Meal in inventory! Craft at Workbench.');
+                    }
+                }
+            });
+        }
+
         const closeContainerBtn = document.getElementById('close-container-btn');
         if (closeContainerBtn) {
             closeContainerBtn.addEventListener('click', () => this.closeContainerModal());
@@ -2465,6 +2665,115 @@ class ReserveGame {
         }, 3000);
     }
 
+    updateHoverTooltip(e) {
+        const tooltip = document.getElementById('entity-hover-tooltip');
+        if (!tooltip) return;
+
+        const mx = this.mouse.worldX;
+        const my = this.mouse.worldY;
+
+        let hoveredEntity = null;
+        let isJock = false;
+
+        // Check Player
+        const pDist = Math.hypot(mx - this.player.x, my - this.player.y);
+        if (pDist <= this.player.radius + 10) {
+            hoveredEntity = {
+                title: 'Player (You)',
+                hp: this.player.hp, maxHp: this.player.maxHp,
+                hunger: this.player.hunger, maxHunger: this.player.maxHunger,
+                thirst: this.player.thirst, maxThirst: this.player.maxThirst
+            };
+        }
+
+        // Check Jock
+        if (!hoveredEntity && this.dogJock) {
+            const jDist = Math.hypot(mx - this.dogJock.x, my - this.dogJock.y);
+            if (jDist <= 24) {
+                hoveredEntity = {
+                    title: 'Jock',
+                    hp: this.dogJock.hp, maxHp: this.dogJock.maxHp,
+                    hunger: this.dogJock.hunger, maxHunger: this.dogJock.maxHunger,
+                    thirst: this.dogJock.thirst, maxThirst: this.dogJock.maxThirst
+                };
+                isJock = true;
+            }
+        }
+
+        // Check Hired Rangers
+        if (!hoveredEntity) {
+            for (const r of this.rangers) {
+                const rDist = Math.hypot(mx - r.x, my - r.y);
+                if (rDist <= 22) {
+                    hoveredEntity = {
+                        title: `Ranger: ${r.name}`,
+                        hp: r.hp || 100, maxHp: r.maxHp || 100,
+                        hunger: r.hunger || 100, maxHunger: r.maxHunger || 100,
+                        thirst: r.thirst || 100, maxThirst: r.maxThirst || 100
+                    };
+                    break;
+                }
+            }
+        }
+
+        // Check Animals
+        if (!hoveredEntity) {
+            for (const a of this.renderedAnimals) {
+                const aDist = Math.hypot(mx - a.x, my - a.y);
+                if (aDist <= 24) {
+                    hoveredEntity = {
+                        title: a.name,
+                        hp: a.hp || 100, maxHp: a.maxHp || 100,
+                        hunger: a.hunger || 100, maxHunger: a.maxHunger || 100,
+                        thirst: a.thirst || 100, maxThirst: a.maxThirst || 100
+                    };
+                    break;
+                }
+            }
+        }
+
+        if (hoveredEntity) {
+            tooltip.classList.remove('hidden');
+            tooltip.style.left = `${e.clientX + 15}px`;
+            tooltip.style.top = `${e.clientY + 15}px`;
+
+            const jockHeader = document.getElementById('tooltip-jock-header');
+            if (jockHeader) {
+                if (isJock) jockHeader.classList.remove('hidden');
+                else jockHeader.classList.add('hidden');
+            }
+
+            const titleEl = document.getElementById('tooltip-entity-title');
+            if (titleEl) titleEl.textContent = hoveredEntity.title;
+
+            const hpFill = document.getElementById('tooltip-hp-fill');
+            const hpText = document.getElementById('tooltip-hp-text');
+            if (hpFill && hpText) {
+                const pct = Math.max(0, Math.min(100, (hoveredEntity.hp / hoveredEntity.maxHp) * 100));
+                hpFill.style.width = `${pct}%`;
+                hpText.textContent = `${Math.round(hoveredEntity.hp)}/${Math.round(hoveredEntity.maxHp)}`;
+            }
+
+            const hungerFill = document.getElementById('tooltip-hunger-fill');
+            const hungerText = document.getElementById('tooltip-hunger-text');
+            if (hungerFill && hungerText) {
+                const pct = Math.max(0, Math.min(100, (hoveredEntity.hunger / hoveredEntity.maxHunger) * 100));
+                hungerFill.style.width = `${pct}%`;
+                hungerText.textContent = `${Math.round(hoveredEntity.hunger)}/${Math.round(hoveredEntity.maxHunger)}`;
+            }
+
+            const thirstFill = document.getElementById('tooltip-thirst-fill');
+            const thirstText = document.getElementById('tooltip-thirst-text');
+            if (thirstFill && thirstText) {
+                const pct = Math.max(0, Math.min(100, (hoveredEntity.thirst / hoveredEntity.maxThirst) * 100));
+                thirstFill.style.width = `${pct}%`;
+                thirstText.textContent = `${Math.round(hoveredEntity.thirst)}/${Math.round(hoveredEntity.maxThirst)}`;
+            }
+        } else {
+            tooltip.classList.add('hidden');
+        }
+    }
+
     // World Clicks: Planting Saplings, Harvesting, Waterhole, Furnace, and Crates
     handleWorldClick() {
         const mx = this.mouse.worldX;
@@ -2480,9 +2789,13 @@ class ReserveGame {
             this.inventory.consumeItem('cooked_meat', 1);
             this.player.hunger = Math.min(this.player.maxHunger, this.player.hunger + 40);
             this.player.hp = Math.min(this.player.maxHp, this.player.hp + 15);
+
+            // Drop Scraps on the ground at player position
+            this.droppedItems.push(new DroppedItem(`scraps_${Date.now()}`, 'scraps', 1, this.player.x + (Math.random() - 0.5) * 20, this.player.y + (Math.random() - 0.5) * 20));
+
             playProceduralSound('eat');
             this.addFloatingText('🍖 Ate Cooked Meat! (+40 Hunger)', this.player.x, this.player.y - 20, '#f39c12');
-            this.showNotification('Ate Cooked Meat! Restored Hunger & HP.');
+            this.showNotification('Ate Cooked Meat! Dropped Scraps for Jock\'s meal.');
             this.updateUI();
             return;
         }
@@ -2606,6 +2919,11 @@ class ReserveGame {
                     if (braaiObj) this.openBraaiModal(braaiObj);
                     return;
                 }
+                if (b.type === 'dog_bowl') {
+                    const bowlObj = this.dogBowls.find(db => db.id === b.id);
+                    if (bowlObj) this.openDogBowlModal(bowlObj);
+                    return;
+                }
                 if (b.type === 'ranger_hut') {
                     this.openRangerHutModal(b);
                     return;
@@ -2715,7 +3033,10 @@ class ReserveGame {
             'stone-pickaxe': '⛏️',
             'stone-shovel': '🪵',
             raw_meat: '🥩',
-            cooked_meat: '🍖'
+            cooked_meat: '🍖',
+            scraps: '🍖',
+            dog_meal: '🍖',
+            dog_bowl: '🥣'
         };
 
         const imageMap = {
@@ -2791,7 +3112,10 @@ class ReserveGame {
             'stone-shovel': '🪵',
             braai_wood: '🪵',
             raw_meat: '🥩',
-            cooked_meat: '🍖'
+            cooked_meat: '🍖',
+            scraps: '🍖',
+            dog_meal: '🍖',
+            dog_bowl: '🥣'
         };
 
         const nameMap = {
@@ -2804,7 +3128,10 @@ class ReserveGame {
             'stone-shovel': 'Shovel',
             braai_wood: 'Braai Wood',
             raw_meat: 'Raw Meat',
-            cooked_meat: 'Cooked Meat'
+            cooked_meat: 'Cooked Meat',
+            scraps: 'Scraps',
+            dog_meal: 'Dog Meal',
+            dog_bowl: 'Dog Bowl'
         };
 
         const imageMap = {
@@ -3065,29 +3392,79 @@ class ReserveGame {
     }
 
     updateHqModalUI() {
-        const statusEl = document.getElementById('hq-assignment-status');
-        const btnEl = document.getElementById('toggle-player-hq-assignment-btn');
+        const humanContainer = document.getElementById('hq-human-slots');
+        const petContainer = document.getElementById('hq-pet-slots');
         const sleepBox = document.getElementById('hq-sleep-container');
 
-        if (statusEl) {
-            statusEl.textContent = this.isPlayerAssignedToHQ
-                ? "Assigned to Reserve HQ"
-                : "Unassigned";
-            statusEl.style.color = this.isPlayerAssignedToHQ ? "var(--accent-green)" : "var(--text-main)";
-        }
-        if (btnEl) {
-            btnEl.textContent = this.isPlayerAssignedToHQ
-                ? "Unassign Player from HQ"
-                : "Assign Player to HQ";
-            btnEl.className = `action-btn ${this.isPlayerAssignedToHQ ? "" : "positive-btn"}`;
+        // Human Resident Slot (1 Max - Player)
+        if (humanContainer) {
+            humanContainer.innerHTML = '';
+            const slotCard = document.createElement('div');
+            slotCard.className = `slot-card ${this.isPlayerAssignedToHQ ? 'filled' : 'empty'}`;
+
             if (this.isPlayerAssignedToHQ) {
-                btnEl.style.background = "var(--accent-red)";
-                btnEl.style.color = "white";
+                slotCard.innerHTML = `
+                    <div class="slot-icon">🤠</div>
+                    <div class="slot-title">Player (Assigned)</div>
+                    <div class="slot-sub">Reserve Commander</div>
+                    <button class="action-btn small-btn" style="background: var(--accent-red); color: white; margin-top: 6px;">Unassign</button>
+                `;
+                slotCard.querySelector('button').addEventListener('click', () => {
+                    this.isPlayerAssignedToHQ = false;
+                    this.showNotification('Unassigned Player from Reserve HQ.');
+                    this.updateHqModalUI();
+                });
             } else {
-                btnEl.style.background = "";
-                btnEl.style.color = "";
+                slotCard.innerHTML = `
+                    <div class="slot-icon" style="opacity: 0.4;">👤</div>
+                    <div class="slot-title" style="color: var(--text-muted);">Empty Human Slot</div>
+                    <div class="slot-sub">Reserve Commander</div>
+                    <button class="action-btn small-btn positive-btn" style="margin-top: 6px;">Assign Player</button>
+                `;
+                slotCard.querySelector('button').addEventListener('click', () => {
+                    this.isPlayerAssignedToHQ = true;
+                    this.showNotification('Assigned Player to Reserve HQ!');
+                    this.updateHqModalUI();
+                });
             }
+            humanContainer.appendChild(slotCard);
         }
+
+        // Pet Companion Slot (1 Max - Dog Jock)
+        if (petContainer) {
+            petContainer.innerHTML = '';
+            const isJockHere = (this.jockAssignedBuilding === 'hq');
+            const petCard = document.createElement('div');
+            petCard.className = `slot-card ${isJockHere ? 'filled' : 'empty'}`;
+
+            if (isJockHere) {
+                petCard.innerHTML = `
+                    <div class="slot-icon">🐕</div>
+                    <div class="slot-title">Jock (Assigned)</div>
+                    <div class="slot-sub">Companion Dog</div>
+                    <button class="action-btn small-btn" style="background: var(--accent-red); color: white; margin-top: 6px;">Unassign</button>
+                `;
+                petCard.querySelector('button').addEventListener('click', () => {
+                    this.jockAssignedBuilding = null;
+                    this.showNotification('Unassigned Jock from Reserve HQ.');
+                    this.updateHqModalUI();
+                });
+            } else {
+                petCard.innerHTML = `
+                    <div class="slot-icon" style="opacity: 0.4;">🐾</div>
+                    <div class="slot-title" style="color: var(--text-muted);">Empty Pet Slot</div>
+                    <div class="slot-sub">Companion Dog</div>
+                    <button class="action-btn small-btn positive-btn" style="margin-top: 6px;">Assign Jock</button>
+                `;
+                petCard.querySelector('button').addEventListener('click', () => {
+                    this.jockAssignedBuilding = 'hq';
+                    this.showNotification('Assigned Jock to Reserve HQ!');
+                    this.updateHqModalUI();
+                });
+            }
+            petContainer.appendChild(petCard);
+        }
+
         if (sleepBox) {
             if (this.isPlayerAssignedToHQ && this.isNight()) {
                 sleepBox.classList.remove('hidden');
@@ -3187,50 +3564,120 @@ class ReserveGame {
 
     updateRangerHutModalUI() {
         if (!this.activeRangerHut) return;
-        const assignedText = document.getElementById('ranger-hut-assigned-text');
-        const selectEl = document.getElementById('ranger-hut-select');
-        const assignBtn = document.getElementById('assign-ranger-hut-btn');
-        const unassignBtn = document.getElementById('unassign-ranger-hut-btn');
 
-        const assignedRangerId = this.activeRangerHut.assignedRangerId;
-        const assignedRanger = this.state.hiredRangers.find(r => r.id === assignedRangerId);
+        const humanContainer = document.getElementById('ranger-hut-human-slots');
+        const petContainer = document.getElementById('ranger-hut-pet-slots');
 
-        if (assignedText) {
-            assignedText.textContent = assignedRanger
-                ? `Assigned: ${assignedRanger.name}`
-                : "None assigned";
-            assignedText.style.color = assignedRanger ? "var(--accent-green)" : "var(--text-muted)";
-        }
-
-        if (selectEl) {
-            selectEl.innerHTML = "";
-            const availableRangers = this.state.hiredRangers.filter(r => {
-                const isAssignedElsewhere = this.state.placedBuildings.some(
-                    b => b.type === 'ranger_hut' && b.id !== this.activeRangerHut.id && b.assignedRangerId === r.id
-                );
-                return !isAssignedElsewhere;
-            });
-
-            if (availableRangers.length === 0) {
-                const opt = document.createElement('option');
-                opt.value = "";
-                opt.textContent = "-- No Unassigned Hired Rangers --";
-                selectEl.appendChild(opt);
-                if (assignBtn) assignBtn.disabled = true;
-            } else {
-                if (assignBtn) assignBtn.disabled = false;
-                availableRangers.forEach(r => {
-                    const opt = document.createElement('option');
-                    opt.value = r.id;
-                    opt.textContent = `${r.name} ($${r.dailyWage}/d)`;
-                    if (r.id === assignedRangerId) opt.selected = true;
-                    selectEl.appendChild(opt);
-                });
+        if (!this.activeRangerHut.assignedRangerIds) {
+            this.activeRangerHut.assignedRangerIds = [];
+            // Migrate legacy single assignedRangerId if exists
+            if (this.activeRangerHut.assignedRangerId) {
+                this.activeRangerHut.assignedRangerIds.push(this.activeRangerHut.assignedRangerId);
             }
         }
 
-        if (unassignBtn) {
-            unassignBtn.style.display = assignedRangerId ? "block" : "none";
+        const currentAssignedIds = this.activeRangerHut.assignedRangerIds;
+
+        // Render 2 Ranger Slots
+        if (humanContainer) {
+            humanContainer.innerHTML = '';
+            for (let i = 0; i < 2; i++) {
+                const assignedRangerId = currentAssignedIds[i];
+                const assignedRanger = this.state.hiredRangers.find(r => r.id === assignedRangerId);
+
+                const slotCard = document.createElement('div');
+                slotCard.className = `slot-card ${assignedRanger ? 'filled' : 'empty'}`;
+
+                if (assignedRanger) {
+                    slotCard.innerHTML = `
+                        <div class="slot-icon">🤠</div>
+                        <div class="slot-title">${assignedRanger.name}</div>
+                        <div class="slot-sub">Ranger Slot ${i + 1}</div>
+                        <button class="action-btn small-btn" style="background: var(--accent-red); color: white; margin-top: 6px;">Unassign</button>
+                    `;
+                    slotCard.querySelector('button').addEventListener('click', () => {
+                        this.activeRangerHut.assignedRangerIds.splice(i, 1);
+                        this.syncRangersWithInfrastructure();
+                        this.updateRangerHutModalUI();
+                        this.showNotification(`Unassigned ${assignedRanger.name} from Ranger Hut.`);
+                    });
+                } else {
+                    const availableRangers = this.state.hiredRangers.filter(r => {
+                        const isAssignedToThisHut = currentAssignedIds.includes(r.id);
+                        const isAssignedElsewhere = this.state.placedBuildings.some(
+                            b => b.type === 'ranger_hut' && b.id !== this.activeRangerHut.id && b.assignedRangerIds?.includes(r.id)
+                        );
+                        return !isAssignedToThisHut && !isAssignedElsewhere;
+                    });
+
+                    if (availableRangers.length > 0) {
+                        const selectOptions = availableRangers.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+                        slotCard.innerHTML = `
+                            <div class="slot-icon" style="opacity: 0.4;">🤠</div>
+                            <div class="slot-title" style="color: var(--text-muted);">Empty Ranger Slot</div>
+                            <select class="ranger-slot-select" style="padding: 4px; border-radius: 4px; background: #1a252c; color: var(--text-main); border: 1px solid var(--border-color); font-size: 0.75rem; width: 100%; margin-top: 4px;">
+                                ${selectOptions}
+                            </select>
+                            <button class="action-btn small-btn positive-btn" style="margin-top: 6px;">Assign Ranger</button>
+                        `;
+                        slotCard.querySelector('button').addEventListener('click', () => {
+                            const selectEl = slotCard.querySelector('.ranger-slot-select');
+                            if (selectEl && selectEl.value) {
+                                this.activeRangerHut.assignedRangerIds.push(selectEl.value);
+                                this.syncRangersWithInfrastructure();
+                                this.updateRangerHutModalUI();
+                                const hired = this.state.hiredRangers.find(r => r.id === selectEl.value);
+                                this.showNotification(`Assigned ${hired ? hired.name : 'Ranger'} to Ranger Hut!`);
+                            }
+                        });
+                    } else {
+                        slotCard.innerHTML = `
+                            <div class="slot-icon" style="opacity: 0.4;">🤠</div>
+                            <div class="slot-title" style="color: var(--text-muted);">Empty Ranger Slot</div>
+                            <div class="slot-sub">No Hired Staff Available</div>
+                        `;
+                    }
+                }
+
+                humanContainer.appendChild(slotCard);
+            }
+        }
+
+        // Render 1 Pet Slot (Dog Jock)
+        if (petContainer) {
+            petContainer.innerHTML = '';
+            const isJockHere = (this.jockAssignedBuilding === this.activeRangerHut.id);
+
+            const petCard = document.createElement('div');
+            petCard.className = `slot-card ${isJockHere ? 'filled' : 'empty'}`;
+
+            if (isJockHere) {
+                petCard.innerHTML = `
+                    <div class="slot-icon">🐕</div>
+                    <div class="slot-title">Jock (Assigned)</div>
+                    <div class="slot-sub">Companion Dog</div>
+                    <button class="action-btn small-btn" style="background: var(--accent-red); color: white; margin-top: 6px;">Unassign</button>
+                `;
+                petCard.querySelector('button').addEventListener('click', () => {
+                    this.jockAssignedBuilding = null;
+                    this.showNotification('Unassigned Jock from Ranger Hut.');
+                    this.updateRangerHutModalUI();
+                });
+            } else {
+                petCard.innerHTML = `
+                    <div class="slot-icon" style="opacity: 0.4;">🐾</div>
+                    <div class="slot-title" style="color: var(--text-muted);">Empty Pet Slot</div>
+                    <div class="slot-sub">Companion Dog</div>
+                    <button class="action-btn small-btn positive-btn" style="margin-top: 6px;">Assign Jock</button>
+                `;
+                petCard.querySelector('button').addEventListener('click', () => {
+                    this.jockAssignedBuilding = this.activeRangerHut.id;
+                    this.showNotification('Assigned Jock to Ranger Hut!');
+                    this.updateRangerHutModalUI();
+                });
+            }
+
+            petContainer.appendChild(petCard);
         }
     }
 
@@ -3292,6 +3739,32 @@ class ReserveGame {
         if (fuelCount) fuelCount.textContent = `${this.activeBraai.braaiWood} / ${this.activeBraai.maxFuel}`;
         if (meatCount) meatCount.textContent = `${this.activeBraai.rawMeat} / ${this.activeBraai.maxMeat}`;
         if (outputCount) outputCount.textContent = `${this.activeBraai.cookedMeat} Cooked Meat`;
+    }
+
+    // Dog Bowl Modal
+    openDogBowlModal(dogBowl) {
+        this.player.isMovementLocked = true;
+        this.activeDogBowl = dogBowl;
+        const modal = document.getElementById('dog-bowl-modal');
+        if (modal) {
+            modal.classList.remove('hidden');
+            this.updateDogBowlModalUI();
+        }
+    }
+
+    closeDogBowlModal() {
+        this.player.isMovementLocked = false;
+        this.activeDogBowl = null;
+        const modal = document.getElementById('dog-bowl-modal');
+        if (modal) modal.classList.add('hidden');
+    }
+
+    updateDogBowlModalUI() {
+        if (!this.activeDogBowl) return;
+        const countEl = document.getElementById('dog-bowl-meals-count');
+        if (countEl) {
+            countEl.textContent = `${this.activeDogBowl.meals} / ${this.activeDogBowl.maxMeals}`;
+        }
     }
 
     // Furnace Modal
@@ -3357,11 +3830,13 @@ class ReserveGame {
             const stoneCount = this.inventory.getItemCount('stone');
             const pStoneCount = this.inventory.getItemCount('processedStone');
             const saplingCount = this.inventory.getItemCount('sapling');
+            const scrapsCount = this.inventory.getItemCount('scraps');
 
             const canAfford = woodCount >= (itemDef.woodCost || 0) &&
                               stoneCount >= (itemDef.stoneCost || 0) &&
                               pStoneCount >= (itemDef.processedStoneCost || 0) &&
-                              saplingCount >= (itemDef.saplingCost || 0);
+                              saplingCount >= (itemDef.saplingCost || 0) &&
+                              scrapsCount >= (itemDef.scrapsCost || 0);
 
             const card = document.createElement('div');
             card.className = 'item-card';
@@ -3384,6 +3859,7 @@ class ReserveGame {
                     ${itemDef.stoneCost ? `<span class="badge">Stone: ${itemDef.stoneCost}</span>` : ''}
                     ${itemDef.processedStoneCost ? `<span class="badge">P-Stone: ${itemDef.processedStoneCost}</span>` : ''}
                     ${itemDef.saplingCost ? `<span class="badge">Sapling: ${itemDef.saplingCost}</span>` : ''}
+                    ${itemDef.scrapsCost ? `<span class="badge">Scraps: ${itemDef.scrapsCost}</span>` : ''}
                 </div>
                 <button class="action-btn" ${!canAfford ? 'disabled' : ''}>
                     ${!canAfford ? 'Insufficient Resources' : (itemDef.type === 'item' ? `Craft ${itemDef.name}` : `Build ${itemDef.name}`)}
@@ -3399,6 +3875,7 @@ class ReserveGame {
                             this.inventory.consumeItem('stone', itemDef.stoneCost || 0);
                             this.inventory.consumeItem('processedStone', itemDef.processedStoneCost || 0);
                             if (itemDef.saplingCost) this.inventory.consumeItem('sapling', itemDef.saplingCost);
+                            if (itemDef.scrapsCost) this.inventory.consumeItem('scraps', itemDef.scrapsCost);
                             this.inventory.addItem(itemDef.id, 1);
                             this.showNotification(`Crafted 1x ${itemDef.name}!`);
                             this.updateUI();
@@ -3741,6 +4218,8 @@ class ReserveGame {
                 this.furnaces.push(new Furnace(buildingObj.id, buildingObj.x, buildingObj.y, bDef.width, bDef.height));
             } else if (bDef.id === 'braai') {
                 this.braais.push(new Braai(buildingObj.id, buildingObj.x, buildingObj.y, bDef.width, bDef.height));
+            } else if (bDef.id === 'dog_bowl') {
+                this.dogBowls.push(new DogBowl(buildingObj.id, buildingObj.x, buildingObj.y, bDef.width, bDef.height));
             } else if (bDef.id === 'ranger_hut') {
                 this.syncRangersWithInfrastructure();
             }
@@ -3757,38 +4236,42 @@ class ReserveGame {
     // Infrastructure & Housing Warning Checks
     syncRangersWithInfrastructure() {
         const rangerHuts = this.state.placedBuildings.filter(b => b.type === 'ranger_hut');
-        const builtHutCount = rangerHuts.length;
+        const maxCapacity = rangerHuts.length * 2; // 2 Rangers per Hut
         const hiredCount = this.state.hiredRangers.length;
 
         // Housing Warning Badge Logic
         const warningBadge = document.getElementById('housing-warning-badge');
         const warningText = document.getElementById('housing-warning-text');
 
-        if (hiredCount > builtHutCount) {
+        if (hiredCount > maxCapacity) {
             if (warningBadge) warningBadge.classList.remove('hidden');
-            if (warningText) warningText.textContent = `Staff Unhoused (${hiredCount} staff / ${builtHutCount} huts)`;
+            if (warningText) warningText.textContent = `Staff Unhoused (${hiredCount} staff / ${maxCapacity} capacity)`;
         } else {
             if (warningBadge) warningBadge.classList.add('hidden');
         }
 
-        if (builtHutCount === 0) {
+        if (rangerHuts.length === 0) {
             this.rangers = [];
             return;
         }
 
-        // Only hired rangers up to available hut capacity spawn on canvas
-        const allowedSpawns = Math.min(hiredCount, builtHutCount);
         this.rangers = [];
-        for (let i = 0; i < allowedSpawns; i++) {
-            const hired = this.state.hiredRangers[i];
-            const targetHut = rangerHuts[i % rangerHuts.length];
-            this.rangers.push(new Ranger(
-                hired,
-                targetHut.x,
-                targetHut.y,
-                this.reserve
-            ));
-        }
+        this.state.hiredRangers.forEach((hired, index) => {
+            // Find assigned hut if any
+            let targetHut = rangerHuts.find(b => b.assignedRangerIds?.includes(hired.id));
+            if (!targetHut && index < maxCapacity) {
+                targetHut = rangerHuts[Math.floor(index / 2)];
+            }
+
+            if (targetHut) {
+                this.rangers.push(new Ranger(
+                    hired,
+                    targetHut.x,
+                    targetHut.y,
+                    this.reserve
+                ));
+            }
+        });
     }
 
     // Floating Text Helpers
@@ -3945,7 +4428,7 @@ class ReserveGame {
 
             this.updateProgressBar();
             this.renderedAnimals.forEach(a => a.update(deltaSec, this.waterhole));
-            if (this.dogJock) this.dogJock.update(deltaSec);
+            if (this.dogJock) this.dogJock.update(deltaSec, this.waterhole, this.dogBowls);
         }, this.tickInterval);
     }
 
@@ -4709,7 +5192,7 @@ class ReserveGame {
             }
         });
 
-        // 4. Render Placed Buildings & Furnaces & Braai & Chopping Station
+        // 4. Render Placed Buildings & Furnaces & Braai & Chopping Station & Dog Bowl
         this.state.placedBuildings.forEach(b => {
             if (b.type === 'furnace') {
                 const furnaceObj = this.furnaces.find(f => f.id === b.id);
@@ -4720,6 +5203,11 @@ class ReserveGame {
                 const braaiObj = this.braais.find(br => br.id === b.id);
                 if (braaiObj) {
                     braaiObj.render(this.ctx, this.images);
+                }
+            } else if (b.type === 'dog_bowl') {
+                const bowlObj = this.dogBowls.find(db => db.id === b.id);
+                if (bowlObj) {
+                    bowlObj.render(this.ctx);
                 }
             } else if (b.type === 'wood_chopping_station') {
                 this.ctx.save();
