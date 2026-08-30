@@ -7,7 +7,7 @@ const BASE_ANIMAL_SPECIES = [
         speciesId: 'impala',
         name: 'Impala',
         icon: '🦌',
-        image: 'impala.png',
+        image: 'assets/impala.png',
         baseCost: 250,
         baseAttraction: 15,
         enclosureTierReq: 1,
@@ -19,7 +19,7 @@ const BASE_ANIMAL_SPECIES = [
         speciesId: 'zebra',
         name: 'Plains Zebra',
         icon: '🦓',
-        image: 'zebra.png',
+        image: 'assets/zebra.png',
         baseCost: 600,
         baseAttraction: 40,
         enclosureTierReq: 1,
@@ -31,7 +31,7 @@ const BASE_ANIMAL_SPECIES = [
         speciesId: 'rhino',
         name: 'White Rhino',
         icon: '🦏',
-        image: 'rhino.png',
+        image: 'assets/rhino.png',
         baseCost: 1500,
         baseAttraction: 110,
         enclosureTierReq: 2,
@@ -43,7 +43,7 @@ const BASE_ANIMAL_SPECIES = [
         speciesId: 'lion',
         name: 'African Lion',
         icon: '🦁',
-        image: 'lion.png',
+        image: 'assets/lion.png',
         baseCost: 3500,
         baseAttraction: 280,
         enclosureTierReq: 3,
@@ -55,7 +55,7 @@ const BASE_ANIMAL_SPECIES = [
         speciesId: 'elephant',
         name: 'African Elephant',
         icon: '🐘',
-        image: 'elephant.png',
+        image: 'assets/elephant.png',
         baseCost: 6000,
         baseAttraction: 500,
         enclosureTierReq: 3,
@@ -149,7 +149,7 @@ function generateRangerListings(count = 6) {
         const gender = Math.random() < 0.5 ? 'Male' : 'Female';
         const age = Math.floor(20 + Math.random() * 38);
         const baseWage = 25 + Math.floor(Math.random() * 35);
-        const image = Math.random() < 0.5 ? 'ranger1.png' : 'ranger2.png';
+        const image = Math.random() < 0.5 ? 'assets/ranger1.png' : 'assets/ranger2.png';
 
         // Pick 3 unique traits
         const shuffledTraits = [...TRAITS_POOL].sort(() => 0.5 - Math.random());
@@ -178,7 +178,22 @@ function generateRangerListings(count = 6) {
 
 const BUILDINGS_DATA = [
     {
+        id: 'workbench',
+        name: 'Workbench',
+        icon: '🛠️',
+        woodCost: 10,
+        stoneCost: 0,
+        processedStoneCost: 0,
+        width: 60,
+        height: 60,
+        description: 'Crafting bench that unlocks tools, structures, fences, and processing stations.'
+    }
+];
+
+const WORKBENCH_CRAFTABLES = [
+    {
         id: 'ranger_hut',
+        type: 'building',
         name: 'Ranger Hut',
         icon: '🏠',
         woodCost: 20,
@@ -190,6 +205,7 @@ const BUILDINGS_DATA = [
     },
     {
         id: 'furnace',
+        type: 'building',
         name: 'Smelting Furnace',
         icon: '🧱',
         woodCost: 15,
@@ -198,6 +214,87 @@ const BUILDINGS_DATA = [
         width: 70,
         height: 70,
         description: 'Consumes Wood fuel to smelt Stone into Processed Stone over time.'
+    },
+    {
+        id: 'fence_tier1',
+        type: 'building',
+        name: 'Fence Tier 1',
+        icon: '🪵',
+        image: 'assets/fence-tier1.png',
+        woodCost: 10,
+        stoneCost: 0,
+        processedStoneCost: 0,
+        width: 60,
+        height: 60,
+        description: 'Basic wooden perimeter fence segment.'
+    },
+    {
+        id: 'fence_gate',
+        type: 'building',
+        name: 'Employee Gate',
+        icon: '🚪',
+        image: 'assets/fence-tier1-employee-gate.png',
+        woodCost: 15,
+        stoneCost: 5,
+        processedStoneCost: 0,
+        width: 70,
+        height: 70,
+        description: 'Secure access gate for staff entrance and exit.'
+    },
+    {
+        id: 'wood_chopping_station',
+        type: 'building',
+        name: 'Wood Chopping Station',
+        icon: '🪓',
+        woodCost: 25,
+        stoneCost: 10,
+        processedStoneCost: 0,
+        width: 70,
+        height: 70,
+        description: 'Converts raw Wood into Braai Wood fuel.'
+    },
+    {
+        id: 'braai',
+        type: 'building',
+        name: 'Braai Grill',
+        icon: '🥩',
+        image: 'assets/braai.png',
+        woodCost: 15,
+        stoneCost: 20,
+        processedStoneCost: 5,
+        width: 70,
+        height: 70,
+        description: 'African BBQ grill that cooks Raw Meat using Braai Wood.'
+    },
+    {
+        id: 'stone-axe',
+        type: 'item',
+        name: 'Stone Axe',
+        icon: '🪓',
+        image: 'assets/stone-axe.png',
+        woodCost: 5,
+        processedStoneCost: 3,
+        description: 'Crafted tool for rapid tree harvesting and auto-gathering.'
+    },
+    {
+        id: 'stone-pickaxe',
+        type: 'item',
+        name: 'Stone Pickaxe',
+        icon: '⛏️',
+        image: 'assets/stone-pickaxe.png',
+        woodCost: 5,
+        processedStoneCost: 3,
+        description: 'Crafted tool for rapid rock mining and auto-gathering.'
+    },
+    {
+        id: 'stone-shovel',
+        type: 'item',
+        name: 'Stone Shovel',
+        icon: '🪵',
+        image: 'assets/stone-shovel.png',
+        woodCost: 5,
+        processedStoneCost: 3,
+        description: 'Crafted shovel tool for multi-purpose earthwork.'
     }
 ];
 

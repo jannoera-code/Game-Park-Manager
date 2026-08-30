@@ -23,6 +23,10 @@
                 <div class="survival-label">💧 Thirst</div>
                 <div class="survival-bar thirst-bar"><div id="player-thirst-fill" class="bar-fill thirst-fill" style="width: 100%;"></div></div>
             </div>
+            <div class="survival-bar-group">
+                <div class="survival-label">🍖 Hunger</div>
+                <div class="survival-bar hunger-bar"><div id="player-hunger-fill" class="bar-fill hunger-fill" style="width: 100%;"></div></div>
+            </div>
         </div>
 
         <!-- Top HUD Header -->
@@ -136,6 +140,60 @@
             <div class="minimap-label">MINIMAP</div>
         </div>
 
+        <!-- Workbench UI Modal -->
+        <div id="workbench-modal" class="modal-backdrop hidden">
+            <div class="modal-card workbench-card" style="max-width: 650px;">
+                <div class="modal-header">
+                    <h3>🛠️ Workbench Crafting & Construction</h3>
+                    <button id="close-workbench-btn" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div id="workbench-crafting-grid" class="panel-grid" style="max-height: 400px; overflow-y: auto;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Braai UI Modal -->
+        <div id="braai-modal" class="modal-backdrop hidden">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h3>🥩 Braai Grill</h3>
+                    <button id="close-braai-btn" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="furnace-status-row">
+                        <span>Status: <strong id="braai-status-text">Idle</strong></span>
+                        <div class="furnace-progress-bar">
+                            <div id="braai-progress-fill" class="furnace-progress-fill" style="background: linear-gradient(90deg, #e67e22, #2ecc71);"></div>
+                        </div>
+                    </div>
+
+                    <div class="furnace-slots">
+                        <!-- Fuel Slot -->
+                        <div class="furnace-slot">
+                            <h4>🔥 Braai Wood</h4>
+                            <div id="braai-fuel-count" class="slot-count">0 / 10</div>
+                            <button id="add-braai-fuel-btn" class="action-btn small-btn">+ Add Braai Wood (1)</button>
+                        </div>
+
+                        <!-- Raw Meat Slot -->
+                        <div class="furnace-slot">
+                            <h4>🥩 Raw Meat</h4>
+                            <div id="braai-meat-count" class="slot-count">0 / 10</div>
+                            <button id="add-braai-meat-btn" class="action-btn small-btn">+ Add Raw Meat (1)</button>
+                        </div>
+
+                        <!-- Output Slot -->
+                        <div class="furnace-slot">
+                            <h4>🍖 Cooked Meat</h4>
+                            <div id="braai-output-count" class="slot-count">0</div>
+                            <button id="collect-braai-output-btn" class="action-btn small-btn positive-btn">Collect Cooked Meat</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Furnace UI Modal -->
         <div id="furnace-modal" class="modal-backdrop hidden">
             <div class="modal-card">
@@ -188,6 +246,27 @@
                     <div id="inventory-grid" class="inventory-grid"></div>
                     <div class="inventory-footer">
                         <span>Tip: Slots 1-20 are Backpack, Slots 21-25 are Hotbar. Resources stack up to 100 per slot. Press <strong>[E]</strong> or <strong>[ESC]</strong> to close.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chest Container UI Modal -->
+        <div id="container-modal" class="modal-backdrop hidden">
+            <div class="modal-card container-card" style="max-width: 720px;">
+                <div class="modal-header">
+                    <h3>🧰 Forgotten Ranger Chest Contents</h3>
+                    <button id="close-container-btn" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body" style="display: flex; gap: 20px; flex-wrap: wrap;">
+                    <div class="container-chest-section" style="flex: 1; min-width: 250px;">
+                        <h4 style="color: var(--accent-gold); margin-bottom: 8px;">Chest Contents</h4>
+                        <div id="chest-contents-grid" class="inventory-grid" style="grid-template-columns: repeat(3, 1fr);"></div>
+                        <button id="loot-all-btn" class="action-btn positive-btn" style="margin-top: 10px;">Loot All</button>
+                    </div>
+                    <div class="container-player-section" style="flex: 1.5; min-width: 300px;">
+                        <h4 style="color: var(--accent-gold); margin-bottom: 8px;">Player Backpack & Hotbar</h4>
+                        <div id="container-player-grid" class="inventory-grid" style="grid-template-columns: repeat(5, 1fr);"></div>
                     </div>
                 </div>
             </div>

@@ -32,7 +32,7 @@ class Inventory {
      * Uses stacking up to maxStack and spills over into empty slots.
      * Returns true if all items were added, false if inventory is full.
      */
-    addItem(type, amount) {
+    addItem(type, amount, name = null) {
         let remaining = amount;
 
         // 1. Fill existing slots with matching type under maxStack
@@ -41,6 +41,7 @@ class Inventory {
                 const available = this.maxStack - slot.count;
                 const toAdd = Math.min(remaining, available);
                 slot.count += toAdd;
+                if (name && !slot.name) slot.name = name;
                 remaining -= toAdd;
                 if (remaining <= 0) return true;
             }
@@ -50,6 +51,7 @@ class Inventory {
         for (let slot of this.slots) {
             if (slot.type === null || slot.count === 0) {
                 slot.type = type;
+                slot.name = name;
                 const toAdd = Math.min(remaining, this.maxStack);
                 slot.count = toAdd;
                 remaining -= toAdd;
@@ -82,6 +84,33 @@ class Inventory {
         return this.slots
             .filter(slot => slot.type === type)
             .reduce((sum, slot) => sum + slot.count, 0);
+    }
+
+    /**
+     * Swaps or stacks items between two slot indices.
+     */
+    swapOrStackSlots(fromIdx, toIdx) {
+        if (fromIdx < 0 || fromIdx >= this.slotCount || toIdx < 0 || toIdx >= this.slotCount) return;
+        if (fromIdx === toIdx) return;
+
+        const from = this.slots[fromIdx];
+        const to = this.slots[toIdx];
+
+        if (!from || from.count <= 0) return;
+
+        if (to && to.count > 0 && to.type === from.type && to.count < this.maxStack) {
+            const space = this.maxStack - to.count;
+            const transfer = Math.min(from.count, space);
+            to.count += transfer;
+            from.count -= transfer;
+            if (from.count <= 0) {
+                this.slots[fromIdx] = { type: null, count: 0 };
+            }
+        } else {
+            const temp = { ...this.slots[fromIdx] };
+            this.slots[fromIdx] = { ...this.slots[toIdx] };
+            this.slots[toIdx] = temp;
+        }
     }
 
     /**
@@ -246,9 +275,10 @@ class Crate {
         this.y = y;
         this.radius = 18;
         this.looted = false;
+        this.contents = []; // Will hold raw meat when opened
     }
 
-    render(ctx) {
+    render(ctx, images) {
         if (this.looted) return;
 
         ctx.save();
@@ -260,31 +290,17 @@ class Crate {
         ctx.ellipse(2, 14, 16, 6, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        // Crate Wooden Box Base
-        ctx.fillStyle = '#8e5a2b';
-        ctx.fillRect(-this.radius, -this.radius, this.radius * 2, this.radius * 2);
-        ctx.strokeStyle = '#523315';
-        ctx.lineWidth = 3;
-        ctx.strokeRect(-this.radius, -this.radius, this.radius * 2, this.radius * 2);
-
-        // Cross straps
-        ctx.strokeStyle = '#d35400';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(-this.radius, -this.radius);
-        ctx.lineTo(this.radius, this.radius);
-        ctx.moveTo(this.radius, -this.radius);
-        ctx.lineTo(-this.radius, this.radius);
-        ctx.stroke();
-
-        // Pulsing Gold Star / Symbol
-        const pulse = 1 + Math.sin(performance.now() / 200) * 0.15;
-        ctx.scale(pulse, pulse);
-        ctx.fillStyle = '#f1c40f';
-        ctx.font = 'bold 16px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('📦', 0, 0);
+        const chestImg = images ? images['old-ranger-chest.png'] : null;
+        if (chestImg && chestImg.complete) {
+            const size = 38;
+            ctx.drawImage(chestImg, -size / 2, -size / 2, size, size);
+        } else {
+            ctx.fillStyle = '#8e5a2b';
+            ctx.fillRect(-this.radius, -this.radius, this.radius * 2, this.radius * 2);
+            ctx.strokeStyle = '#523315';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(-this.radius, -this.radius, this.radius * 2, this.radius * 2);
+        }
 
         ctx.restore();
     }
@@ -299,8 +315,8 @@ class ResourceNode {
         this.type = type; // 'wood' or 'stone'
         this.x = x;
         this.y = y;
-        this.hp = 5;
-        this.maxHp = 5;
+        this.hp = 10;
+        this.maxHp = 10;
         this.radius = type === 'wood' ? 22 : 18;
         this.yieldAmount = type === 'wood' ? 5 : 3;
         this.hitFlashTimer = 0;
@@ -460,7 +476,7 @@ class Chunk {
                 crate.y + crate.radius >= viewBounds.minY &&
                 crate.y - crate.radius <= viewBounds.maxY
             ) {
-                crate.render(ctx);
+                crate.render(ctx, images);
             }
         });
     }
@@ -565,8 +581,11 @@ class Player {
         this.maxHp = 100;
         this.thirst = 100;
         this.maxThirst = 100;
-        this.thirstDepleteRate = 1.2; // Thirst per second
-        this.starveHpDepleteRate = 2.5; // HP loss per second when Thirst is 0
+        this.hunger = 100;
+        this.maxHunger = 100;
+        this.thirstDepleteRate = 0.6; // Halved Thirst depletion rate
+        this.hungerDepleteRate = 0.3; // Hunger trickles down even slower than Thirst
+        this.starveHpDepleteRate = 2.5; // HP loss per second when Thirst or Hunger is 0
     }
 
     get speed() {
@@ -619,9 +638,11 @@ class Player {
             this.screenShakeTimer = Math.max(0, this.screenShakeTimer - dt);
         }
 
-        // Update Survival Mechanics: Thirst & HP
+        // Update Survival Mechanics: Thirst, Hunger & HP
         this.thirst = Math.max(0, this.thirst - this.thirstDepleteRate * dt);
-        if (this.thirst <= 0) {
+        this.hunger = Math.max(0, this.hunger - this.hungerDepleteRate * dt);
+
+        if (this.thirst <= 0 || this.hunger <= 0) {
             this.hp = Math.max(0, this.hp - this.starveHpDepleteRate * dt);
         }
 
@@ -700,6 +721,87 @@ class Player {
 }
 
 /**
+ * DogJock Class
+ * Dog Jock entity wandering aimlessly around Reserve HQ area.
+ */
+class DogJock {
+    constructor(hqX, hqY) {
+        this.hqX = hqX;
+        this.hqY = hqY;
+        this.x = hqX + 20;
+        this.y = hqY + 20;
+        this.speed = 40;
+        this.targetX = this.x;
+        this.targetY = this.y;
+        this.pickNewTarget();
+
+        this.bobTimer = Math.random() * 10;
+        this.bobY = 0;
+        this.wobbleAngle = 0;
+        this.facingLeft = false;
+    }
+
+    pickNewTarget() {
+        const radius = 120;
+        this.targetX = this.hqX + (Math.random() - 0.5) * radius * 2;
+        this.targetY = this.hqY + (Math.random() - 0.5) * radius * 2;
+    }
+
+    update(dt) {
+        const dx = this.targetX - this.x;
+        const dy = this.targetY - this.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist > 5) {
+            if (dx < 0) this.facingLeft = true;
+            else if (dx > 0) this.facingLeft = false;
+
+            this.x += (dx / dist) * this.speed * dt;
+            this.y += (dy / dist) * this.speed * dt;
+
+            this.bobTimer += dt * 10;
+            this.bobY = Math.sin(this.bobTimer) * 3;
+            this.wobbleAngle = Math.sin(this.bobTimer * 0.5) * (5 * Math.PI / 180);
+        } else {
+            if (Math.random() < 0.02) {
+                this.pickNewTarget();
+            }
+            this.bobY += (0 - this.bobY) * Math.min(1, dt * 10);
+            this.wobbleAngle += (0 - this.wobbleAngle) * Math.min(1, dt * 10);
+        }
+    }
+
+    render(ctx, images) {
+        ctx.save();
+        ctx.translate(this.x, this.y + this.bobY);
+        ctx.rotate(this.wobbleAngle);
+
+        if (this.facingLeft) {
+            ctx.scale(-1, 1);
+        }
+
+        // Shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+        ctx.beginPath();
+        ctx.ellipse(0, 12, 10, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        const dogImg = images['dog-jock.png'];
+        if (dogImg && dogImg.complete) {
+            const size = 36;
+            ctx.drawImage(dogImg, -size / 2, -size / 2, size, size);
+        } else {
+            ctx.fillStyle = '#e67e22';
+            ctx.beginPath();
+            ctx.arc(0, 0, 10, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.restore();
+    }
+}
+
+/**
  * Waterhole Entity Class
  */
 class Waterhole {
@@ -722,30 +824,37 @@ class Waterhole {
         this.waterLevel = Math.min(this.maxWater, this.waterLevel + amount);
     }
 
-    render(ctx) {
+    render(ctx, images) {
         ctx.save();
         ctx.translate(this.x, this.y);
 
         // Water level ratio affects inner color/size
         const waterRatio = Math.max(0.2, this.waterLevel / this.maxWater);
 
-        // Outer Mud Ring
-        ctx.fillStyle = '#3a2717';
-        ctx.beginPath();
-        ctx.ellipse(0, 0, this.radiusX + 15, this.radiusY + 10, Math.PI / 6, 0, Math.PI * 2);
-        ctx.fill();
+        const waterImg = images ? images['waterhole.png'] : null;
+        if (waterImg && waterImg.complete) {
+            const drawW = this.radiusX * 2.2;
+            const drawH = this.radiusY * 2.2;
+            ctx.drawImage(waterImg, -drawW / 2, -drawH / 2, drawW, drawH);
+        } else {
+            // Outer Mud Ring
+            ctx.fillStyle = '#3a2717';
+            ctx.beginPath();
+            ctx.ellipse(0, 0, this.radiusX + 15, this.radiusY + 10, Math.PI / 6, 0, Math.PI * 2);
+            ctx.fill();
 
-        // Water Pool
-        ctx.fillStyle = waterRatio < 0.3 ? '#5c4328' : '#1f4866';
-        ctx.beginPath();
-        ctx.ellipse(0, 0, this.radiusX * waterRatio, this.radiusY * waterRatio, Math.PI / 6, 0, Math.PI * 2);
-        ctx.fill();
+            // Water Pool
+            ctx.fillStyle = waterRatio < 0.3 ? '#5c4328' : '#1f4866';
+            ctx.beginPath();
+            ctx.ellipse(0, 0, this.radiusX * waterRatio, this.radiusY * waterRatio, Math.PI / 6, 0, Math.PI * 2);
+            ctx.fill();
 
-        // Inner Shimmer
-        ctx.fillStyle = waterRatio < 0.3 ? '#82633f' : '#295b80';
-        ctx.beginPath();
-        ctx.ellipse(-10, -5, (this.radiusX - 30) * waterRatio, (this.radiusY - 20) * waterRatio, Math.PI / 6, 0, Math.PI * 2);
-        ctx.fill();
+            // Inner Shimmer
+            ctx.fillStyle = waterRatio < 0.3 ? '#82633f' : '#295b80';
+            ctx.beginPath();
+            ctx.ellipse(-10, -5, (this.radiusX - 30) * waterRatio, (this.radiusY - 20) * waterRatio, Math.PI / 6, 0, Math.PI * 2);
+            ctx.fill();
+        }
 
         // Waterhole Water Bar Label
         const barW = 80;
@@ -1070,6 +1179,81 @@ class Ranger {
 }
 
 /**
+ * Braai Structure Class
+ */
+class Braai {
+    constructor(id, x, y, width = 70, height = 70) {
+        this.id = id;
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+
+        this.braaiWood = 0;
+        this.maxFuel = 10;
+        this.rawMeat = 0;
+        this.maxMeat = 10;
+        this.cookedMeat = 0;
+
+        this.isCooking = false;
+        this.cookTimer = 0;
+        this.cookDuration = 4.0;
+    }
+
+    addFuel(amount) {
+        const added = Math.min(amount, this.maxFuel - this.braaiWood);
+        this.braaiWood += added;
+        return added;
+    }
+
+    addMeat(amount) {
+        const added = Math.min(amount, this.maxMeat - this.rawMeat);
+        this.rawMeat += added;
+        return added;
+    }
+
+    collectOutput() {
+        const collected = this.cookedMeat;
+        this.cookedMeat = 0;
+        return collected;
+    }
+
+    update(dt) {
+        if (this.braaiWood > 0 && this.rawMeat > 0) {
+            this.isCooking = true;
+            this.cookTimer += dt;
+
+            if (this.cookTimer >= this.cookDuration) {
+                this.cookTimer = 0;
+                this.braaiWood -= 1;
+                this.rawMeat -= 1;
+                this.cookedMeat += 1;
+            }
+        } else {
+            this.isCooking = false;
+            this.cookTimer = 0;
+        }
+    }
+
+    render(ctx, images) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+
+        const braaiImg = images ? images['braai.png'] : null;
+        if (braaiImg && braaiImg.complete) {
+            ctx.drawImage(braaiImg, -this.width / 2, -this.height / 2, this.width, this.height);
+        } else {
+            ctx.fillStyle = '#2c3e50';
+            ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
+            ctx.fillStyle = this.isCooking ? '#e67e22' : '#7f8c8d';
+            ctx.fillText('BRAAI', 0, 0);
+        }
+
+        ctx.restore();
+    }
+}
+
+/**
  * Furnace Class
  */
 class Furnace {
@@ -1206,11 +1390,13 @@ class ReserveGame {
         this.chunkManager = new ChunkManager(1000, 2);
         this.player = new Player(250, 250);
         this.waterhole = new Waterhole(this.reserve.x + 500, this.reserve.y + 500);
+        this.dogJock = new DogJock(this.reserve.x + 150, this.reserve.y + 135);
 
         this.droppedItems = [];
         this.plantedSaplings = [];
         this.rangers = [];
         this.furnaces = [];
+        this.braais = [];
         this.renderedAnimals = [];
         this.floatingTexts = [];
 
@@ -1228,6 +1414,7 @@ class ReserveGame {
         };
 
         this.activeFurnace = null;
+        this.activeBraai = null;
         this.activeCrate = null;
 
         // Initial Seed Resources into 25-slot Inventory & Hotbar
@@ -1255,7 +1442,9 @@ class ReserveGame {
             screenX: 0,
             screenY: 0,
             worldX: 0,
-            worldY: 0
+            worldY: 0,
+            isDown: false,
+            holdGatherTimer: 0
         };
 
         this.lastFrameTime = performance.now();
@@ -1265,14 +1454,19 @@ class ReserveGame {
 
     preloadAssets() {
         const assetFiles = [
-            'ranger1.png', 'ranger2.png',
-            'tree.png', 'rock.png',
-            'elephant.png', 'impala.png', 'lion.png', 'rhino.png', 'zebra.png'
+            'stone-axe.png', 'stone-pickaxe.png', 'stone-shovel.png',
+            'elephant.png', 'impala.png', 'lion.png', 'ranger1.png',
+            'ranger2.png', 'rhino.png', 'rock.png', 'reserve-hq.png',
+            'waterhole.png', 'braai.png', 'furnace.png', 'dog-jock.png',
+            'ranger-hut.png', 'fence-tier1.png', 'old-ranger-chest.png',
+            'fence-tier1-employee-gate.png', 'tree.png', 'zebra.png'
         ];
         assetFiles.forEach(file => {
             const img = new Image();
-            img.src = file;
+            img.src = `./assets/${file}`;
             this.images[file] = img;
+            this.images[`./assets/${file}`] = img;
+            this.images[`assets/${file}`] = img;
         });
     }
 
@@ -1338,11 +1532,19 @@ class ReserveGame {
 
             this.canvas.addEventListener('mousedown', (e) => {
                 if (e.button === 0) {
+                    this.mouse.isDown = true;
+                    this.mouse.holdGatherTimer = 0;
                     if (this.placementMode.active) {
                         this.tryPlaceBuilding();
                     } else {
                         this.handleWorldClick();
                     }
+                }
+            });
+
+            window.addEventListener('mouseup', (e) => {
+                if (e.button === 0) {
+                    this.mouse.isDown = false;
                 }
             });
         }
@@ -1377,9 +1579,77 @@ class ReserveGame {
             }, { passive: false });
         }
 
+        const closeWorkbenchBtn = document.getElementById('close-workbench-btn');
+        if (closeWorkbenchBtn) {
+            closeWorkbenchBtn.addEventListener('click', () => this.closeWorkbenchModal());
+        }
+
+        const closeBraaiBtn = document.getElementById('close-braai-btn');
+        if (closeBraaiBtn) {
+            closeBraaiBtn.addEventListener('click', () => this.closeBraaiModal());
+        }
+
+        const addBraaiFuelBtn = document.getElementById('add-braai-fuel-btn');
+        if (addBraaiFuelBtn) {
+            addBraaiFuelBtn.addEventListener('click', () => {
+                if (this.activeBraai && this.inventory.getItemCount('braai_wood') >= 1) {
+                    const added = this.activeBraai.addFuel(1);
+                    this.inventory.consumeItem('braai_wood', added);
+                    this.updateUI();
+                    this.updateBraaiModalUI();
+                } else if (this.activeBraai) {
+                    this.showNotification('No Braai Wood in inventory! Convert raw Wood at a Wood Chopping Station.');
+                }
+            });
+        }
+
+        const addBraaiMeatBtn = document.getElementById('add-braai-meat-btn');
+        if (addBraaiMeatBtn) {
+            addBraaiMeatBtn.addEventListener('click', () => {
+                if (this.activeBraai && this.inventory.getItemCount('raw_meat') >= 1) {
+                    const added = this.activeBraai.addMeat(1);
+                    this.inventory.consumeItem('raw_meat', added);
+                    this.updateUI();
+                    this.updateBraaiModalUI();
+                } else if (this.activeBraai) {
+                    this.showNotification('No Raw Meat in inventory! Loot Forgotten Ranger Chests.');
+                }
+            });
+        }
+
+        const collectBraaiBtn = document.getElementById('collect-braai-output-btn');
+        if (collectBraaiBtn) {
+            collectBraaiBtn.addEventListener('click', () => {
+                if (this.activeBraai) {
+                    const collected = this.activeBraai.collectOutput();
+                    if (collected > 0) {
+                        if (this.inventory.canAddItem('cooked_meat', collected)) {
+                            this.inventory.addItem('cooked_meat', collected);
+                            this.showNotification(`Collected +${collected} Cooked Meat!`);
+                        } else {
+                            this.activeBraai.cookedMeat += collected;
+                            this.showNotification('Backpack Full!');
+                        }
+                    }
+                    this.updateUI();
+                    this.updateBraaiModalUI();
+                }
+            });
+        }
+
         const closeFurnaceBtn = document.getElementById('close-furnace-btn');
         if (closeFurnaceBtn) {
             closeFurnaceBtn.addEventListener('click', () => this.closeFurnaceModal());
+        }
+
+        const closeContainerBtn = document.getElementById('close-container-btn');
+        if (closeContainerBtn) {
+            closeContainerBtn.addEventListener('click', () => this.closeContainerModal());
+        }
+
+        const lootAllBtn = document.getElementById('loot-all-btn');
+        if (lootAllBtn) {
+            lootAllBtn.addEventListener('click', () => this.lootAllContainerContents());
         }
 
         const closeInvBtn = document.getElementById('close-inventory-btn');
@@ -1448,8 +1718,23 @@ class ReserveGame {
         const mx = this.mouse.worldX;
         const my = this.mouse.worldY;
 
-        // 0. Check Sapling Planting (Ecological Cycle)
+        // 0. Check Cooked Meat Consumption from Hotbar
         const activeItemSlot = this.getActiveHotbarItem();
+        if (activeItemSlot && activeItemSlot.type === 'cooked_meat') {
+            if (this.player.hunger >= this.player.maxHunger && this.player.hp >= this.player.maxHp) {
+                this.showNotification('Hunger & HP are already full!');
+                return;
+            }
+            this.inventory.consumeItem('cooked_meat', 1);
+            this.player.hunger = Math.min(this.player.maxHunger, this.player.hunger + 40);
+            this.player.hp = Math.min(this.player.maxHp, this.player.hp + 15);
+            this.addFloatingText('🍖 Ate Cooked Meat! (+40 Hunger)', this.player.x, this.player.y - 20, '#f39c12');
+            this.showNotification('Ate Cooked Meat! Restored Hunger & HP.');
+            this.updateUI();
+            return;
+        }
+
+        // 0b. Check Sapling Planting (Ecological Cycle)
         if (activeItemSlot && activeItemSlot.type === 'sapling') {
             const isInsideReserve = (
                 mx >= this.reserve.x &&
@@ -1528,18 +1813,45 @@ class ReserveGame {
             }
         }
 
-        // 3. Check Furnace Click
-        for (const furnace of this.furnaces) {
-            const halfW = furnace.width / 2;
-            const halfH = furnace.height / 2;
-            if (mx >= furnace.x - halfW && mx <= furnace.x + halfW &&
-                my >= furnace.y - halfH && my <= furnace.y + halfH) {
-                const dist = Math.hypot(this.player.x - furnace.x, this.player.y - furnace.y);
-                if (dist <= 150) {
-                    this.openFurnaceModal(furnace);
+        // 3. Check Placed Building Clicks (Workbench, Furnace, etc.)
+        for (const b of this.state.placedBuildings) {
+            const halfW = b.width / 2;
+            const halfH = b.height / 2;
+            if (mx >= b.x - halfW && mx <= b.x + halfW &&
+                my >= b.y - halfH && my <= b.y + halfH) {
+                const dist = Math.hypot(this.player.x - b.x, this.player.y - b.y);
+                if (dist > 150) {
+                    this.showNotification(`Move closer to ${b.name}!`);
                     return;
-                } else {
-                    this.showNotification('Move closer to the Furnace to use it!');
+                }
+                if (b.type === 'workbench') {
+                    this.openWorkbenchModal();
+                    return;
+                }
+                if (b.type === 'furnace') {
+                    const furnaceObj = this.furnaces.find(f => f.id === b.id);
+                    if (furnaceObj) this.openFurnaceModal(furnaceObj);
+                    return;
+                }
+                if (b.type === 'braai') {
+                    const braaiObj = this.braais.find(br => br.id === b.id);
+                    if (braaiObj) this.openBraaiModal(braaiObj);
+                    return;
+                }
+                if (b.type === 'wood_chopping_station') {
+                    if (this.inventory.getItemCount('wood') >= 1) {
+                        if (this.inventory.canAddItem('braai_wood', 1)) {
+                            this.inventory.consumeItem('wood', 1);
+                            this.inventory.addItem('braai_wood', 1);
+                            this.addFloatingText('🪓 Converted 1 Wood -> 1 Braai Wood!', b.x, b.y - 20, '#f1c40f');
+                            this.showNotification('Converted 1 raw Wood into 1 Braai Wood!');
+                            this.updateUI();
+                        } else {
+                            this.showNotification('Backpack Full!');
+                        }
+                    } else {
+                        this.showNotification('Requires raw Wood to chop into Braai Wood!');
+                    }
                     return;
                 }
             }
@@ -1565,28 +1877,38 @@ class ReserveGame {
         }
 
         if (targetNode) {
-            const result = targetNode.hit(1, this.buffs.harvestYieldBonus);
-            this.player.triggerScreenShake(5, 0.12);
+            this.hitResourceNode(targetNode);
+        }
+    }
 
-            if (result.destroyed) {
-                this.chunkManager.removeResourceNode(targetNode.id);
+    hitResourceNode(node) {
+        const activeTool = this.getActiveHotbarItem();
+        let dmg = 1;
+        if (activeTool) {
+            if (activeTool.type === 'stone-axe' && node.type === 'wood') dmg = 3;
+            else if (activeTool.type === 'stone-pickaxe' && node.type === 'stone') dmg = 3;
+            else if (['stone-axe', 'stone-pickaxe', 'stone-shovel'].includes(activeTool.type)) dmg = 2;
+        }
 
-                // Spawn physical entity drops on ground instead of directly giving items
-                if (result.type === 'wood') {
-                    // Drop wood + 1 sapling drop
-                    this.droppedItems.push(new DroppedItem(`drop_${Date.now()}_w`, 'wood', result.yieldAmount, targetNode.x, targetNode.y));
-                    if (Math.random() < 0.7) {
-                        this.droppedItems.push(new DroppedItem(`drop_${Date.now()}_s`, 'sapling', 1, targetNode.x + (Math.random() - 0.5) * 20, targetNode.y + (Math.random() - 0.5) * 20));
-                    }
-                } else {
-                    // Drop stone
-                    this.droppedItems.push(new DroppedItem(`drop_${Date.now()}_st`, 'stone', result.yieldAmount, targetNode.x, targetNode.y));
+        const result = node.hit(dmg, this.buffs.harvestYieldBonus);
+        this.player.triggerScreenShake(5, 0.12);
+
+        if (result.destroyed) {
+            this.chunkManager.removeResourceNode(node.id);
+
+            // Spawn physical entity drops on ground instead of directly giving items
+            if (result.type === 'wood') {
+                this.droppedItems.push(new DroppedItem(`drop_${Date.now()}_w`, 'wood', result.yieldAmount, node.x, node.y));
+                if (Math.random() < 0.7) {
+                    this.droppedItems.push(new DroppedItem(`drop_${Date.now()}_s`, 'sapling', 1, node.x + (Math.random() - 0.5) * 20, node.y + (Math.random() - 0.5) * 20));
                 }
-
-                this.addFloatingText(`Destroyed!`, targetNode.x, targetNode.y - 10, '#f1c40f');
             } else {
-                this.addFloatingText(`Hit! (${result.hp}/5)`, targetNode.x, targetNode.y - 10, '#e74c3c');
+                this.droppedItems.push(new DroppedItem(`drop_${Date.now()}_st`, 'stone', result.yieldAmount, node.x, node.y));
             }
+
+            this.addFloatingText(`Destroyed!`, node.x, node.y - 10, '#f1c40f');
+        } else {
+            this.addFloatingText(`Hit! (${result.hp}/${node.maxHp})`, node.x, node.y - 10, '#e74c3c');
         }
     }
 
@@ -1612,7 +1934,18 @@ class ReserveGame {
             wood: '🪵',
             stone: '🪨',
             processedStone: '🧱',
-            sapling: '🌱'
+            sapling: '🌱',
+            'stone-axe': '🪓',
+            'stone-pickaxe': '⛏️',
+            'stone-shovel': '🪵',
+            raw_meat: '🥩',
+            cooked_meat: '🍖'
+        };
+
+        const imageMap = {
+            'stone-axe': 'assets/stone-axe.png',
+            'stone-pickaxe': 'assets/stone-pickaxe.png',
+            'stone-shovel': 'assets/stone-shovel.png'
         };
 
         const container = document.getElementById('hotbar-container');
@@ -1622,18 +1955,40 @@ class ReserveGame {
         slotEls.forEach((slotEl, i) => {
             const isSelected = (i === this.activeHotbarIndex);
             slotEl.className = `hotbar-slot ${isSelected ? 'active' : ''}`;
+            const globalSlotIdx = 20 + i;
+            slotEl.setAttribute('draggable', 'true');
+            slotEl.dataset.slotIndex = globalSlotIdx;
 
-            const itemSlot = this.inventory.slots[20 + i]; // Slots 20..24 are hotbar
+            const itemSlot = this.inventory.slots[globalSlotIdx]; // Slots 20..24 are hotbar
             const iconDiv = slotEl.querySelector('.hotbar-icon');
             const countSpan = slotEl.querySelector('.hotbar-count');
 
             if (itemSlot && itemSlot.count > 0 && itemSlot.type) {
-                if (iconDiv) iconDiv.textContent = iconMap[itemSlot.type] || '📦';
+                const imgPath = imageMap[itemSlot.type];
+                if (imgPath && iconDiv) {
+                    iconDiv.innerHTML = `<img src="${imgPath}" style="width:24px;height:24px;object-fit:contain;">`;
+                } else if (iconDiv) {
+                    iconDiv.textContent = iconMap[itemSlot.type] || '📦';
+                }
                 if (countSpan) countSpan.textContent = itemSlot.count;
             } else {
                 if (iconDiv) iconDiv.textContent = '';
                 if (countSpan) countSpan.textContent = '';
             }
+
+            slotEl.ondragstart = (e) => {
+                e.dataTransfer.setData('text/plain', globalSlotIdx.toString());
+            };
+            slotEl.ondragover = (e) => e.preventDefault();
+            slotEl.ondrop = (e) => {
+                e.preventDefault();
+                const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+                if (!isNaN(fromIdx)) {
+                    this.inventory.swapOrStackSlots(fromIdx, globalSlotIdx);
+                    this.updateUI();
+                    this.renderInventoryGrid();
+                }
+            };
         });
     }
 
@@ -1654,61 +2009,122 @@ class ReserveGame {
             wood: '🪵',
             stone: '🪨',
             processedStone: '🧱',
-            sapling: '🌱'
+            sapling: '🌱',
+            'stone-axe': '🪓',
+            'stone-pickaxe': '⛏️',
+            'stone-shovel': '🪵',
+            braai_wood: '🪵',
+            raw_meat: '🥩',
+            cooked_meat: '🍖'
         };
 
         const nameMap = {
             wood: 'Wood',
             stone: 'Stone',
             processedStone: 'P-Stone',
-            sapling: 'Sapling'
+            sapling: 'Sapling',
+            'stone-axe': 'Stone Axe',
+            'stone-pickaxe': 'Pickaxe',
+            'stone-shovel': 'Shovel',
+            braai_wood: 'Braai Wood',
+            raw_meat: 'Raw Meat',
+            cooked_meat: 'Cooked Meat'
+        };
+
+        const imageMap = {
+            'stone-axe': 'assets/stone-axe.png',
+            'stone-pickaxe': 'assets/stone-pickaxe.png',
+            'stone-shovel': 'assets/stone-shovel.png'
         };
 
         this.inventory.slots.forEach((slot, index) => {
             const isHotbarSlot = index >= 20;
             const slotEl = document.createElement('div');
             slotEl.className = `inventory-slot ${slot.count === 0 ? 'empty' : ''} ${isHotbarSlot ? 'hotbar-slot-marker' : ''}`;
+            slotEl.setAttribute('draggable', 'true');
+            slotEl.dataset.slotIndex = index;
 
             const labelText = isHotbarSlot ? `H${index - 19}` : `${index + 1}`;
 
             if (slot.count > 0 && slot.type) {
+                const imgPath = imageMap[slot.type];
+                const displayName = slot.name || nameMap[slot.type] || slot.type;
+                const iconHTML = imgPath
+                    ? `<img src="${imgPath}" style="width:32px;height:32px;object-fit:contain;">`
+                    : (iconMap[slot.type] || '📦');
+
                 slotEl.innerHTML = `
-                    <div class="slot-icon">${iconMap[slot.type] || '📦'}</div>
-                    <div class="slot-item-name">${nameMap[slot.type] || slot.type}</div>
+                    <div class="slot-icon">${iconHTML}</div>
+                    <div class="slot-item-name" style="font-size:0.6rem; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%;">${displayName}</div>
                     <div class="slot-count-badge">${slot.count}</div>
                 `;
             } else {
                 slotEl.innerHTML = `<span style="font-size:0.7rem; color:var(--text-muted);">${labelText}</span>`;
             }
 
+            slotEl.ondragstart = (e) => {
+                e.dataTransfer.setData('text/plain', index.toString());
+            };
+            slotEl.ondragover = (e) => e.preventDefault();
+            slotEl.ondrop = (e) => {
+                e.preventDefault();
+                const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+                if (!isNaN(fromIdx)) {
+                    this.inventory.swapOrStackSlots(fromIdx, index);
+                    this.updateUI();
+                    this.renderInventoryGrid();
+                }
+            };
+
             grid.appendChild(slotEl);
         });
     }
 
-    // Forgotten Ranger Crate Interactivity
+    // Forgotten Ranger Crate Interactivity (2-Step Event)
     openCrateModal(crate) {
         this.activeCrate = crate;
-        const modal = document.getElementById('crate-modal');
-        const container = document.getElementById('crate-buff-choices');
-        if (!modal || !container) return;
 
-        // Shuffle and pick 3 randomized RPG stat buffs
-        const shuffled = [...BUFF_OPTIONS].sort(() => 0.5 - Math.random());
-        const choices = shuffled.slice(0, 3);
+        // Initialize crate raw meat loot if not done yet
+        if (!crate.contents || crate.contents.length === 0) {
+            const meatNames = ['Raw Kudu Meat', 'Raw Warthog Meat', 'Raw Impala Meat', 'Raw Zebra Meat', 'Raw Springbok Meat'];
+            const count = Math.floor(2 + Math.random() * 4); // 2 to 5
+            crate.contents = [];
+            for (let i = 0; i < count; i++) {
+                const randomName = meatNames[Math.floor(Math.random() * meatNames.length)];
+                crate.contents.push({
+                    type: 'raw_meat',
+                    name: randomName,
+                    count: 1
+                });
+            }
+        }
 
-        container.innerHTML = '';
-        choices.forEach(buff => {
-            const card = document.createElement('div');
-            card.className = 'crate-choice-card';
-            card.innerHTML = `
-                <div class="crate-choice-title">${buff.title}</div>
-                <div class="crate-choice-desc">${buff.description}</div>
-            `;
-            card.addEventListener('click', () => this.applyCrateBuff(buff));
-            container.appendChild(card);
-        });
+        // Step 1: Offer RPG buff modal if buff not chosen for this crate yet
+        if (!crate.buffChosen) {
+            const modal = document.getElementById('crate-modal');
+            const container = document.getElementById('crate-buff-choices');
+            if (!modal || !container) return;
 
-        modal.classList.remove('hidden');
+            const shuffled = [...BUFF_OPTIONS].sort(() => 0.5 - Math.random());
+            const choices = shuffled.slice(0, 3);
+
+            container.innerHTML = '';
+            choices.forEach(buff => {
+                const card = document.createElement('div');
+                card.className = 'crate-choice-card';
+                card.innerHTML = `
+                    <div class="crate-choice-title">${buff.title}</div>
+                    <div class="crate-choice-desc">${buff.description}</div>
+                `;
+                card.addEventListener('click', () => this.applyCrateBuff(buff));
+                container.appendChild(card);
+            });
+
+            modal.classList.remove('hidden');
+        } else {
+            // Step 2: Directly open container UI
+            this.openContainerModal();
+        }
     }
 
     applyCrateBuff(buff) {
@@ -1729,14 +2145,159 @@ class ReserveGame {
         }
 
         if (this.activeCrate) {
-            this.activeCrate.looted = true;
+            this.activeCrate.buffChosen = true;
         }
 
         this.showNotification(`Acquired Buff: ${buff.title}!`);
         const modal = document.getElementById('crate-modal');
         if (modal) modal.classList.add('hidden');
 
+        // Transition to Step 2: Open Container UI
+        this.openContainerModal();
         this.updateUI();
+    }
+
+    // Container UI Modal
+    openContainerModal() {
+        const modal = document.getElementById('container-modal');
+        if (modal) {
+            modal.classList.remove('hidden');
+            this.renderContainerUI();
+        }
+    }
+
+    closeContainerModal() {
+        const modal = document.getElementById('container-modal');
+        if (modal) modal.classList.add('hidden');
+    }
+
+    renderContainerUI() {
+        const chestGrid = document.getElementById('chest-contents-grid');
+        const playerGrid = document.getElementById('container-player-grid');
+        if (!chestGrid || !playerGrid || !this.activeCrate) return;
+
+        chestGrid.innerHTML = '';
+        playerGrid.innerHTML = '';
+
+        const iconMap = {
+            raw_meat: '🥩',
+            cooked_meat: '🍖',
+            wood: '🪵',
+            stone: '🪨',
+            processedStone: '🧱',
+            sapling: '🌱'
+        };
+
+        // Render Chest Contents
+        this.activeCrate.contents.forEach((item, index) => {
+            const slotEl = document.createElement('div');
+            slotEl.className = 'inventory-slot';
+            slotEl.setAttribute('draggable', 'true');
+            slotEl.dataset.chestIndex = index;
+
+            slotEl.innerHTML = `
+                <div class="slot-icon">${iconMap[item.type] || '📦'}</div>
+                <div class="slot-item-name" style="font-size:0.55rem; text-align:center;">${item.name}</div>
+                <div class="slot-count-badge">${item.count}</div>
+            `;
+
+            slotEl.addEventListener('click', () => {
+                if (this.inventory.canAddItem(item.type, item.count)) {
+                    this.inventory.addItem(item.type, item.count, item.name);
+                    this.activeCrate.contents.splice(index, 1);
+                    if (this.activeCrate.contents.length === 0) {
+                        this.activeCrate.looted = true;
+                    }
+                    this.updateUI();
+                    this.renderContainerUI();
+                } else {
+                    this.showNotification('Backpack Full!');
+                }
+            });
+
+            chestGrid.appendChild(slotEl);
+        });
+
+        // Render Player Inventory in Container UI
+        this.inventory.slots.forEach((slot, index) => {
+            const isHotbarSlot = index >= 20;
+            const slotEl = document.createElement('div');
+            slotEl.className = `inventory-slot ${slot.count === 0 ? 'empty' : ''} ${isHotbarSlot ? 'hotbar-slot-marker' : ''}`;
+            slotEl.setAttribute('draggable', 'true');
+            slotEl.dataset.slotIndex = index;
+
+            if (slot.count > 0 && slot.type) {
+                slotEl.innerHTML = `
+                    <div class="slot-icon">${iconMap[slot.type] || '📦'}</div>
+                    <div class="slot-item-name" style="font-size:0.55rem; text-align:center;">${slot.name || slot.type}</div>
+                    <div class="slot-count-badge">${slot.count}</div>
+                `;
+            } else {
+                slotEl.innerHTML = `<span style="font-size:0.65rem; color:var(--text-muted);">${isHotbarSlot ? 'H' + (index - 19) : index + 1}</span>`;
+            }
+
+            playerGrid.appendChild(slotEl);
+        });
+    }
+
+    lootAllContainerContents() {
+        if (!this.activeCrate) return;
+
+        let lootedAny = false;
+        for (let i = this.activeCrate.contents.length - 1; i >= 0; i--) {
+            const item = this.activeCrate.contents[i];
+            if (this.inventory.canAddItem(item.type, item.count)) {
+                this.inventory.addItem(item.type, item.count, item.name);
+                this.activeCrate.contents.splice(i, 1);
+                lootedAny = true;
+            } else {
+                this.showNotification('Backpack Full!');
+                break;
+            }
+        }
+
+        if (this.activeCrate.contents.length === 0) {
+            this.activeCrate.looted = true;
+            this.closeContainerModal();
+        }
+
+        this.updateUI();
+        this.renderContainerUI();
+    }
+
+    // Braai Modal
+    openBraaiModal(braai) {
+        this.activeBraai = braai;
+        const modal = document.getElementById('braai-modal');
+        if (modal) {
+            modal.classList.remove('hidden');
+            this.updateBraaiModalUI();
+        }
+    }
+
+    closeBraaiModal() {
+        this.activeBraai = null;
+        const modal = document.getElementById('braai-modal');
+        if (modal) modal.classList.add('hidden');
+    }
+
+    updateBraaiModalUI() {
+        if (!this.activeBraai) return;
+
+        const statusText = document.getElementById('braai-status-text');
+        const fillBar = document.getElementById('braai-progress-fill');
+        const fuelCount = document.getElementById('braai-fuel-count');
+        const meatCount = document.getElementById('braai-meat-count');
+        const outputCount = document.getElementById('braai-output-count');
+
+        if (statusText) statusText.textContent = this.activeBraai.isCooking ? '🔥 Sizzling...' : 'Idle';
+        if (fillBar) {
+            const pct = (this.activeBraai.cookTimer / this.activeBraai.cookDuration) * 100;
+            fillBar.style.width = `${pct}%`;
+        }
+        if (fuelCount) fuelCount.textContent = `${this.activeBraai.braaiWood} / ${this.activeBraai.maxFuel}`;
+        if (meatCount) meatCount.textContent = `${this.activeBraai.rawMeat} / ${this.activeBraai.maxMeat}`;
+        if (outputCount) outputCount.textContent = `${this.activeBraai.cookedMeat} Cooked Meat`;
     }
 
     // Furnace Modal
@@ -1772,6 +2333,86 @@ class ReserveGame {
         if (fuelCount) fuelCount.textContent = `${this.activeFurnace.fuelWood} / ${this.activeFurnace.maxFuel} Wood`;
         if (matCount) matCount.textContent = `${this.activeFurnace.rawStone} / ${this.activeFurnace.maxMaterial} Stone`;
         if (outputCount) outputCount.textContent = `${this.activeFurnace.processedStone} Processed Stone`;
+    }
+
+    // Workbench Modal System
+    openWorkbenchModal() {
+        const modal = document.getElementById('workbench-modal');
+        if (modal) {
+            modal.classList.remove('hidden');
+            this.renderWorkbenchModal();
+        }
+    }
+
+    closeWorkbenchModal() {
+        const modal = document.getElementById('workbench-modal');
+        if (modal) modal.classList.add('hidden');
+    }
+
+    renderWorkbenchModal() {
+        const grid = document.getElementById('workbench-crafting-grid');
+        if (!grid) return;
+        grid.innerHTML = '';
+
+        WORKBENCH_CRAFTABLES.forEach(itemDef => {
+            const woodCount = this.inventory.getItemCount('wood');
+            const stoneCount = this.inventory.getItemCount('stone');
+            const pStoneCount = this.inventory.getItemCount('processedStone');
+
+            const canAfford = woodCount >= (itemDef.woodCost || 0) &&
+                              stoneCount >= (itemDef.stoneCost || 0) &&
+                              pStoneCount >= (itemDef.processedStoneCost || 0);
+
+            const card = document.createElement('div');
+            card.className = 'item-card';
+
+            const iconHTML = itemDef.image
+                ? `<img src="${itemDef.image}" class="card-thumb-img" alt="${itemDef.name}">`
+                : itemDef.icon;
+
+            card.innerHTML = `
+                <div class="card-header">
+                    <div class="card-icon">${iconHTML}</div>
+                    <div class="card-title-group">
+                        <h4>${itemDef.name}</h4>
+                        <span class="card-sub">${itemDef.type === 'item' ? 'Tool / Item' : 'Structure'}</span>
+                    </div>
+                </div>
+                <p class="card-body">${itemDef.description}</p>
+                <div class="card-stats">
+                    ${itemDef.woodCost ? `<span class="badge">Wood: ${itemDef.woodCost}</span>` : ''}
+                    ${itemDef.stoneCost ? `<span class="badge">Stone: ${itemDef.stoneCost}</span>` : ''}
+                    ${itemDef.processedStoneCost ? `<span class="badge">P-Stone: ${itemDef.processedStoneCost}</span>` : ''}
+                </div>
+                <button class="action-btn" ${!canAfford ? 'disabled' : ''}>
+                    ${!canAfford ? 'Insufficient Resources' : (itemDef.type === 'item' ? `Craft ${itemDef.name}` : `Build ${itemDef.name}`)}
+                </button>
+            `;
+
+            const btn = card.querySelector('.action-btn');
+            if (btn && canAfford) {
+                btn.addEventListener('click', () => {
+                    if (itemDef.type === 'item') {
+                        if (this.inventory.canAddItem(itemDef.id, 1)) {
+                            this.inventory.consumeItem('wood', itemDef.woodCost || 0);
+                            this.inventory.consumeItem('stone', itemDef.stoneCost || 0);
+                            this.inventory.consumeItem('processedStone', itemDef.processedStoneCost || 0);
+                            this.inventory.addItem(itemDef.id, 1);
+                            this.showNotification(`Crafted 1x ${itemDef.name}!`);
+                            this.updateUI();
+                            this.renderWorkbenchModal();
+                        } else {
+                            this.showNotification('Backpack Full!');
+                        }
+                    } else {
+                        this.closeWorkbenchModal();
+                        this.startPlacementMode(itemDef);
+                    }
+                });
+            }
+
+            grid.appendChild(card);
+        });
     }
 
     // Building Placement System
@@ -1860,6 +2501,8 @@ class ReserveGame {
 
             if (bDef.id === 'furnace') {
                 this.furnaces.push(new Furnace(buildingObj.id, buildingObj.x, buildingObj.y, bDef.width, bDef.height));
+            } else if (bDef.id === 'braai') {
+                this.braais.push(new Braai(buildingObj.id, buildingObj.x, buildingObj.y, bDef.width, bDef.height));
             } else if (bDef.id === 'ranger_hut') {
                 this.syncRangersWithInfrastructure();
             }
@@ -2056,14 +2699,22 @@ class ReserveGame {
                 this.updateFurnaceModalUI();
             }
 
+            this.braais.forEach(b => b.update(deltaSec));
+            if (this.activeBraai) {
+                this.updateBraaiModalUI();
+            }
+
             this.updateProgressBar();
             this.renderedAnimals.forEach(a => a.update(deltaSec, this.waterhole));
+            if (this.dogJock) this.dogJock.update(deltaSec);
         }, this.tickInterval);
     }
 
     updateSurvivalHUD() {
         const hpFill = document.getElementById('player-hp-fill');
         const thirstFill = document.getElementById('player-thirst-fill');
+        const hungerFill = document.getElementById('player-hunger-fill');
+
         if (hpFill) {
             const hpPct = Math.max(0, Math.min(100, (this.player.hp / this.player.maxHp) * 100));
             hpFill.style.width = `${hpPct}%`;
@@ -2071,6 +2722,10 @@ class ReserveGame {
         if (thirstFill) {
             const thirstPct = Math.max(0, Math.min(100, (this.player.thirst / this.player.maxThirst) * 100));
             thirstFill.style.width = `${thirstPct}%`;
+        }
+        if (hungerFill) {
+            const hungerPct = Math.max(0, Math.min(100, (this.player.hunger / this.player.maxHunger) * 100));
+            hungerFill.style.width = `${hungerPct}%`;
         }
     }
 
@@ -2087,6 +2742,34 @@ class ReserveGame {
             const resourceNodes = this.chunkManager.getAllResourceNodes();
             this.player.update(dt, this.keys, resourceNodes, this.state.placedBuildings);
             this.chunkManager.update(this.player.x, this.player.y, this.reserve, dt);
+
+            // Hold-to-mine logic when tool equipped
+            if (this.mouse.isDown) {
+                const activeTool = this.getActiveHotbarItem();
+                if (activeTool && ['stone-axe', 'stone-pickaxe', 'stone-shovel'].includes(activeTool.type)) {
+                    this.mouse.holdGatherTimer += dt;
+                    if (this.mouse.holdGatherTimer >= 0.25) { // continuous hit every 0.25s
+                        this.mouse.holdGatherTimer = 0;
+                        const reach = 80;
+                        const allNodes = this.chunkManager.getAllResourceNodes();
+                        let targetNode = null;
+                        let minDist = reach;
+                        for (const node of allNodes) {
+                            const distToClick = Math.hypot(this.mouse.worldX - node.x, this.mouse.worldY - node.y);
+                            const distToPlayer = Math.hypot(this.player.x - node.x, this.player.y - node.y);
+                            if (distToClick <= node.radius + 15 && distToPlayer <= reach) {
+                                if (distToClick < minDist) {
+                                    minDist = distToClick;
+                                    targetNode = node;
+                                }
+                            }
+                        }
+                        if (targetNode) {
+                            this.hitResourceNode(targetNode);
+                        }
+                    }
+                }
+            }
 
             this.rangers.forEach(r => r.update(dt, this.waterhole));
             this.updateDroppedItems(dt);
@@ -2581,28 +3264,48 @@ class ReserveGame {
         this.ctx.fillRect(this.reserve.x, this.reserve.y, this.reserve.width, this.reserve.height);
 
         // Waterhole
-        this.waterhole.render(this.ctx);
+        this.waterhole.render(this.ctx, this.images);
 
         // Reserve HQ
         const campX = this.reserve.x + 100;
         const campY = this.reserve.y + 100;
-        this.ctx.fillStyle = '#5c4028';
-        this.ctx.fillRect(campX, campY, 100, 70);
-        this.ctx.strokeStyle = '#3a2717';
-        this.ctx.lineWidth = 3;
-        this.ctx.strokeRect(campX, campY, 100, 70);
+        const hqImg = this.images['reserve-hq.png'];
+        if (hqImg && hqImg.complete) {
+            this.ctx.drawImage(hqImg, campX, campY, 110, 80);
+        } else {
+            this.ctx.fillStyle = '#5c4028';
+            this.ctx.fillRect(campX, campY, 100, 70);
+            this.ctx.strokeStyle = '#3a2717';
+            this.ctx.lineWidth = 3;
+            this.ctx.strokeRect(campX, campY, 100, 70);
 
-        this.ctx.fillStyle = '#f39c12';
-        this.ctx.font = 'bold 12px sans-serif';
-        this.ctx.textAlign = 'center';
-        this.ctx.textBaseline = 'middle';
-        this.ctx.fillText(`RESERVE HQ T${this.state.campTier}`, campX + 50, campY + 35);
+            this.ctx.fillStyle = '#f39c12';
+            this.ctx.font = 'bold 12px sans-serif';
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+            this.ctx.fillText(`RESERVE HQ T${this.state.campTier}`, campX + 50, campY + 35);
+        }
 
-        // Reserve Perimeter Fences
+        // Dog Jock
+        if (this.dogJock) {
+            this.dogJock.render(this.ctx, this.images);
+        }
+
+        // Reserve Perimeter Fences & Gate
+        const fenceImg = this.images['fence-tier1.png'];
+        const gateImg = this.images['fence-tier1-employee-gate.png'];
+
         const fenceColor = this.state.fenceTier === 3 ? '#3498db' : (this.state.fenceTier === 2 ? '#bdc3c7' : '#8e44ad');
         this.ctx.strokeStyle = fenceColor;
         this.ctx.lineWidth = 6;
         this.ctx.strokeRect(this.reserve.x, this.reserve.y, this.reserve.width, this.reserve.height);
+
+        // Gate rendering at bottom center of reserve bounds
+        const gateX = this.reserve.x + this.reserve.width / 2;
+        const gateY = this.reserve.y + this.reserve.height;
+        if (gateImg && gateImg.complete) {
+            this.ctx.drawImage(gateImg, gateX - 30, gateY - 15, 60, 30);
+        }
 
         if (this.state.fenceTier === 3) {
             const pulse = 4 + Math.sin(performance.now() / 200) * 4;
@@ -2644,19 +3347,21 @@ class ReserveGame {
             }
         });
 
-        // 4. Render Placed Buildings & Furnaces
+        // 4. Render Placed Buildings & Furnaces & Braai & Chopping Station
         this.state.placedBuildings.forEach(b => {
             if (b.type === 'furnace') {
                 const furnaceObj = this.furnaces.find(f => f.id === b.id);
                 if (furnaceObj) {
                     furnaceObj.render(this.ctx);
                 }
-            } else if (b.type === 'ranger_hut') {
+            } else if (b.type === 'braai') {
+                const braaiObj = this.braais.find(br => br.id === b.id);
+                if (braaiObj) {
+                    braaiObj.render(this.ctx, this.images);
+                }
+            } else if (b.type === 'wood_chopping_station') {
                 this.ctx.save();
                 this.ctx.translate(b.x, b.y);
-
-                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-                this.ctx.fillRect(-b.width / 2 + 4, -b.height / 2 + 4, b.width, b.height);
 
                 this.ctx.fillStyle = '#6e4f34';
                 this.ctx.fillRect(-b.width / 2, -b.height / 2, b.width, b.height);
@@ -2664,11 +3369,53 @@ class ReserveGame {
                 this.ctx.lineWidth = 3;
                 this.ctx.strokeRect(-b.width / 2, -b.height / 2, b.width, b.height);
 
-                this.ctx.fillStyle = '#2ecc71';
-                this.ctx.font = 'bold 12px sans-serif';
+                this.ctx.fillStyle = '#f1c40f';
+                this.ctx.font = 'bold 20px sans-serif';
                 this.ctx.textAlign = 'center';
                 this.ctx.textBaseline = 'middle';
-                this.ctx.fillText('RANGER HUT', 0, 0);
+                this.ctx.fillText('🪓', 0, 0);
+
+                this.ctx.restore();
+            } else if (b.type === 'workbench') {
+                this.ctx.save();
+                this.ctx.translate(b.x, b.y);
+
+                this.ctx.fillStyle = '#8e5a2b';
+                this.ctx.fillRect(-b.width / 2, -b.height / 2, b.width, b.height);
+                this.ctx.strokeStyle = '#523315';
+                this.ctx.lineWidth = 3;
+                this.ctx.strokeRect(-b.width / 2, -b.height / 2, b.width, b.height);
+
+                this.ctx.fillStyle = '#f1c40f';
+                this.ctx.font = 'bold 20px sans-serif';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.fillText('🛠️', 0, 0);
+
+                this.ctx.restore();
+            } else if (b.type === 'ranger_hut') {
+                this.ctx.save();
+                this.ctx.translate(b.x, b.y);
+
+                const hutImg = this.images['ranger-hut.png'];
+                if (hutImg && hutImg.complete) {
+                    this.ctx.drawImage(hutImg, -b.width / 2, -b.height / 2, b.width, b.height);
+                } else {
+                    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                    this.ctx.fillRect(-b.width / 2 + 4, -b.height / 2 + 4, b.width, b.height);
+
+                    this.ctx.fillStyle = '#6e4f34';
+                    this.ctx.fillRect(-b.width / 2, -b.height / 2, b.width, b.height);
+                    this.ctx.strokeStyle = '#3d2b1c';
+                    this.ctx.lineWidth = 3;
+                    this.ctx.strokeRect(-b.width / 2, -b.height / 2, b.width, b.height);
+
+                    this.ctx.fillStyle = '#2ecc71';
+                    this.ctx.font = 'bold 12px sans-serif';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'middle';
+                    this.ctx.fillText('RANGER HUT', 0, 0);
+                }
 
                 this.ctx.restore();
             }
