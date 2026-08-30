@@ -192,6 +192,19 @@ const BUILDINGS_DATA = [
 
 const WORKBENCH_CRAFTABLES = [
     {
+        id: 'torch',
+        type: 'building',
+        name: 'Torch',
+        icon: '🔦',
+        woodCost: 1,
+        stoneCost: 0,
+        processedStoneCost: 0,
+        saplingCost: 1,
+        width: 30,
+        height: 30,
+        description: 'Placeable light source that illuminates the surrounding area during the night phase.'
+    },
+    {
         id: 'ranger_hut',
         type: 'building',
         name: 'Ranger Hut',

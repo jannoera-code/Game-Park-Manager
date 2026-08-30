@@ -7,6 +7,114 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <!-- Full-Screen Main Menu Overlay -->
+    <div id="main-menu-overlay" class="main-menu-overlay">
+        <div class="main-menu-card">
+            <h1 class="main-menu-title">🌍 SERENGETI RESERVE</h1>
+            <p class="main-menu-subtitle">African Wildlife Reserve Management RPG</p>
+            <div class="main-menu-actions">
+                <button id="start-new-game-btn" class="menu-btn primary-menu-btn">🎮 Start New Game</button>
+                <button id="open-load-menu-btn" class="menu-btn secondary-menu-btn">📂 Load Game</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ESC Pause Menu Modal -->
+    <div id="pause-modal" class="modal-backdrop hidden">
+        <div class="modal-card pause-card">
+            <div class="modal-header">
+                <h3>⏸️ Game Paused</h3>
+            </div>
+            <div class="modal-body">
+                <div class="volume-setting-group">
+                    <label for="music-volume-slider">🎵 Music Volume: <span id="music-volume-text">50%</span></label>
+                    <input type="range" id="music-volume-slider" min="0" max="1" step="0.05" value="0.5">
+                </div>
+                <div class="volume-setting-group">
+                    <label for="sfx-volume-slider">🔊 SFX Volume: <span id="sfx-volume-text">50%</span></label>
+                    <input type="range" id="sfx-volume-slider" min="0" max="1" step="0.05" value="0.5">
+                </div>
+                <div class="pause-actions">
+                    <button id="resume-game-btn" class="action-btn positive-btn">▶️ Resume Game</button>
+                    <button id="open-save-menu-btn" class="action-btn">💾 Save Game</button>
+                    <button id="return-main-menu-btn" class="action-btn" style="background: var(--bg-glass-card); border: 1px solid var(--border-color); color: var(--text-main);">🏠 Main Menu</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Weekly Finance Recap Modal -->
+    <div id="weekly-recap-modal" class="modal-backdrop hidden">
+        <div class="modal-card recap-card">
+            <div class="modal-header">
+                <h3>📊 End of Week <span id="recap-week-num">1</span> Financial Recap</h3>
+            </div>
+            <div class="modal-body">
+                <div class="recap-summary-box">
+                    <div class="recap-row positive">
+                        <span>💰 Total Attraction Income:</span>
+                        <strong id="recap-total-income">+$0</strong>
+                    </div>
+                    <div class="recap-row negative">
+                        <span>💸 Total Operating Expenses:</span>
+                        <strong id="recap-total-expenses">-$0</strong>
+                    </div>
+                    <div class="recap-divider"></div>
+                    <div class="recap-row net-row">
+                        <span>📈 Net Profit / Loss:</span>
+                        <strong id="recap-net-profit">$0</strong>
+                    </div>
+                </div>
+
+                <div class="recap-breakdown">
+                    <h4>Expense Breakdown</h4>
+                    <div class="recap-subrow">
+                        <span>🤠 Ranger Wages Paid:</span>
+                        <span id="recap-wages-spent">$0</span>
+                    </div>
+                    <div class="recap-subrow">
+                        <span>🦁 Animal Purchases:</span>
+                        <span id="recap-animals-spent">$0</span>
+                    </div>
+                    <div class="recap-subrow">
+                        <span>🏗️ Upgrades & Infrastructure:</span>
+                        <span id="recap-upgrades-spent">$0</span>
+                    </div>
+                </div>
+
+                <button id="start-next-week-btn" class="action-btn positive-btn" style="padding: 12px; font-size: 1rem; margin-top: 10px;">
+                    🚀 Start Next Week (Week <span id="recap-next-week-num">2</span>)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save Game Sub-Menu Modal -->
+    <div id="save-game-modal" class="modal-backdrop hidden">
+        <div class="modal-card save-game-card">
+            <div class="modal-header">
+                <h3>💾 Select Save Slot</h3>
+                <button id="close-save-menu-btn" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="save-slots-container" class="save-slots-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load Game Sub-Menu Modal -->
+    <div id="load-game-modal" class="modal-backdrop hidden">
+        <div class="modal-card load-game-card">
+            <div class="modal-header">
+                <h3>📂 Select Save Slot to Load</h3>
+                <button id="close-load-menu-btn" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="load-slots-container" class="load-slots-grid"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Full-Screen Canvas -->
     <canvas id="reserveCanvas"></canvas>
 
@@ -33,7 +141,7 @@
         <header class="top-hud">
             <div class="hud-brand">
                 <h1>🌍 Serengeti Reserve</h1>
-                <div class="day-badge">Day <span id="stat-day">1</span></div>
+                <div class="day-badge"><span id="digital-clock">06:00 ☀️</span> | Day <span id="stat-day">1</span> of Week <span id="stat-week">1</span></div>
                 <!-- Ranger Housing Warning Badge -->
                 <div id="housing-warning-badge" class="warning-badge hidden" title="Staff Unhoused! Build Ranger Huts so hired rangers can spawn.">
                     ⚠️ <span id="housing-warning-text">Rangers Unhoused</span>
