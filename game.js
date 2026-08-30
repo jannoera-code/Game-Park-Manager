@@ -234,7 +234,18 @@ class SaveManager {
                     traits: r.traits, image: r.image, state: r.state,
                     targetX: r.targetX, targetY: r.targetY, taskTimer: r.taskTimer,
                     fenceWaypointIndex: r.fenceWaypointIndex, reserveBounds: r.reserveBounds
-                }))
+                })),
+                jock: game.dogJock ? {
+                    x: game.dogJock.x,
+                    y: game.dogJock.y,
+                    state: game.dogJock.state,
+                    thirst: game.dogJock.thirst,
+                    hunger: game.dogJock.hunger,
+                    scoutModeEnabled: game.dogJock.scoutModeEnabled,
+                    hasScoutedToday: game.dogJock.hasScoutedToday,
+                    targetX: game.dogJock.targetX,
+                    targetY: game.dogJock.targetY
+                } : null
             },
             economy: {
                 funds: game.state.funds,
@@ -391,6 +402,18 @@ class SaveManager {
                     ranger.fenceWaypointIndex = rData.fenceWaypointIndex;
                     game.rangers.push(ranger);
                 });
+            }
+
+            if (data.aiState.jock && game.dogJock) {
+                game.dogJock.x = data.aiState.jock.x;
+                game.dogJock.y = data.aiState.jock.y;
+                game.dogJock.state = data.aiState.jock.state;
+                game.dogJock.thirst = data.aiState.jock.thirst;
+                game.dogJock.hunger = data.aiState.jock.hunger;
+                game.dogJock.scoutModeEnabled = !!data.aiState.jock.scoutModeEnabled;
+                game.dogJock.hasScoutedToday = !!data.aiState.jock.hasScoutedToday;
+                game.dogJock.targetX = data.aiState.jock.targetX;
+                game.dogJock.targetY = data.aiState.jock.targetY;
             }
         }
 
@@ -1211,10 +1234,15 @@ class DogJock {
         this.hqY = hqY;
         this.x = hqX + 20;
         this.y = hqY + 20;
-        this.speed = 50;
+        this.baseSpeed = 50;
+        this.scoutSpeed = 120;
         this.targetX = this.x;
         this.targetY = this.y;
-        this.state = 'wandering'; // 'wandering', 'thirsty', 'drinking', 'hungry', 'eating'
+        this.state = 'wandering'; // 'wandering', 'thirsty', 'drinking', 'hungry', 'eating', 'scouting', 'returning_hq'
+
+        this.scoutModeEnabled = false;
+        this.hasScoutedToday = false;
+        this.scoutTargetChunk = null;
 
         this.hp = 100;
         this.maxHp = 100;
@@ -1234,18 +1262,82 @@ class DogJock {
         this.facingLeft = false;
     }
 
+    get speed() {
+        return (this.state === 'scouting' || this.state === 'returning_hq') ? this.scoutSpeed : this.baseSpeed;
+    }
+
     pickNewTarget() {
         const radius = 120;
         this.targetX = this.hqX + (Math.random() - 0.5) * radius * 2;
         this.targetY = this.hqY + (Math.random() - 0.5) * radius * 2;
     }
 
-    update(dt, waterhole, dogBowls = []) {
-        // Deplete thirst and hunger over time
-        this.thirst = Math.max(0, this.thirst - dt * 0.8);
-        this.hunger = Math.max(0, this.hunger - dt * 0.5);
+    recallToHQ() {
+        this.state = 'returning_hq';
+        this.scoutTargetChunk = null;
+        this.targetX = this.hqX + 20;
+        this.targetY = this.hqY + 20;
+    }
 
-        if (this.state === 'wandering') {
+    update(dt, waterhole, dogBowls = [], game = null) {
+        // Actively deplete thirst and hunger over time; deplete faster while scouting
+        const isScouting = (this.state === 'scouting');
+        const thirstRate = isScouting ? 2.5 : 0.8;
+        const hungerRate = isScouting ? 2.0 : 0.5;
+
+        this.thirst = Math.max(0, this.thirst - dt * thirstRate);
+        this.hunger = Math.max(0, this.hunger - dt * hungerRate);
+
+        // Check daily scout initiation if Scout Mode active and not yet scouted today
+        if (this.scoutModeEnabled && !this.hasScoutedToday && this.state !== 'scouting' && this.state !== 'returning_hq') {
+            if (this.thirst > 20 && this.hunger > 20 && game) {
+                const targetChunk = game.findNearestUnrevealedChunk();
+                if (targetChunk) {
+                    this.state = 'scouting';
+                    this.hasScoutedToday = true;
+                    this.scoutTargetChunk = targetChunk;
+                    this.targetX = targetChunk.x;
+                    this.targetY = targetChunk.y;
+                }
+            }
+        }
+
+        if (this.state === 'scouting') {
+            if (this.thirst <= 10 || this.hunger <= 10) {
+                this.recallToHQ();
+            } else {
+                this.moveTowardsTarget(dt);
+                if (game) {
+                    // Reveal Fog of War chunks along walking path
+                    const currentChunkX = Math.floor(this.x / 1000);
+                    const currentChunkY = Math.floor(this.y / 1000);
+                    game.revealedChunks.add(`${currentChunkX},${currentChunkY}`);
+                }
+
+                const distToTarget = Math.hypot(this.targetX - this.x, this.targetY - this.y);
+                if (distToTarget < 20) {
+                    if (game && this.scoutTargetChunk) {
+                        game.revealedChunks.add(`${this.scoutTargetChunk.chunkX},${this.scoutTargetChunk.chunkY}`);
+                    }
+                    this.recallToHQ();
+                }
+            }
+        } else if (this.state === 'returning_hq') {
+            this.targetX = this.hqX + 20;
+            this.targetY = this.hqY + 20;
+            this.moveTowardsTarget(dt);
+            if (game) {
+                const currentChunkX = Math.floor(this.x / 1000);
+                const currentChunkY = Math.floor(this.y / 1000);
+                game.revealedChunks.add(`${currentChunkX},${currentChunkY}`);
+            }
+
+            const distToHq = Math.hypot(this.hqX + 20 - this.x, this.hqY + 20 - this.y);
+            if (distToHq < 25) {
+                this.state = 'wandering';
+                this.pickNewTarget();
+            }
+        } else if (this.state === 'wandering') {
             if (this.thirst <= 40) {
                 this.state = 'thirsty';
             } else if (this.hunger <= 40) {
@@ -2095,6 +2187,43 @@ class ReserveGame {
         this.startRenderLoop();
     }
 
+    findNearestUnrevealedChunk() {
+        const hqChunkX = Math.floor((this.hq.x + this.hq.width / 2) / 1000);
+        const hqChunkY = Math.floor((this.hq.y + this.hq.height / 2) / 1000);
+
+        let nearest = null;
+        let minDistSq = Infinity;
+
+        // Search outward in a radius of chunks
+        const maxRadius = 8;
+        for (let r = 1; r <= maxRadius; r++) {
+            for (let dx = -r; dx <= r; dx++) {
+                for (let dy = -r; dy <= r; dy++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+                    const cx = hqChunkX + dx;
+                    const cy = hqChunkY + dy;
+                    const key = `${cx},${cy}`;
+
+                    if (!this.revealedChunks.has(key)) {
+                        const distSq = dx * dx + dy * dy;
+                        if (distSq < minDistSq) {
+                            minDistSq = distSq;
+                            nearest = {
+                                chunkX: cx,
+                                chunkY: cy,
+                                x: cx * 1000 + 500,
+                                y: cy * 1000 + 500
+                            };
+                        }
+                    }
+                }
+            }
+            if (nearest) break;
+        }
+
+        return nearest;
+    }
+
     recordDayBaseline() {
         this.dayBaseline = {
             wood: this.inventory.getItemCount('wood') + this.inventory.getItemCount('braai_wood'),
@@ -2485,6 +2614,32 @@ class ReserveGame {
             closeHqBtn.addEventListener('click', () => this.closeHqModal());
         }
 
+        const jockScoutToggle = document.getElementById('jock-scout-toggle');
+        if (jockScoutToggle) {
+            jockScoutToggle.addEventListener('change', (e) => {
+                if (this.dogJock) {
+                    this.dogJock.scoutModeEnabled = e.target.checked;
+                    this.showNotification(
+                        this.dogJock.scoutModeEnabled
+                            ? "Jock's Scout Mode Enabled! He will scout unrevealed chunks once per day."
+                            : "Jock's Scout Mode Disabled."
+                    );
+                    this.updateHqModalUI();
+                }
+            });
+        }
+
+        const recallJockBtn = document.getElementById('recall-jock-btn');
+        if (recallJockBtn) {
+            recallJockBtn.addEventListener('click', () => {
+                if (this.dogJock) {
+                    this.dogJock.recallToHQ();
+                    this.showNotification("Recall order sent! Jock is returning directly to Reserve HQ.");
+                    this.updateHqModalUI();
+                }
+            });
+        }
+
         const togglePlayerHqBtn = document.getElementById('toggle-player-hq-assignment-btn');
         if (togglePlayerHqBtn) {
             togglePlayerHqBtn.addEventListener('click', () => this.togglePlayerHqAssignment());
@@ -2675,11 +2830,30 @@ class ReserveGame {
         let hoveredEntity = null;
         let isJock = false;
 
+        const formatStatus = (stateStr) => {
+            const mapping = {
+                wandering: 'Idle',
+                grazing: 'Grazing',
+                drinking: 'Drinking',
+                hungry: 'Hungry',
+                eating: 'Eating',
+                thirsty: 'Thirsty',
+                scouting: 'Scouting',
+                returning_hq: 'Returning',
+                patrolling: 'Patrolling',
+                refilling_water: 'Refilling Water',
+                maintaining_fences: 'Maintaining Fences',
+                sleeping: 'Sleeping'
+            };
+            return mapping[stateStr] || 'Active';
+        };
+
         // Check Player
         const pDist = Math.hypot(mx - this.player.x, my - this.player.y);
         if (pDist <= this.player.radius + 10) {
             hoveredEntity = {
                 title: 'Player (You)',
+                status: 'Active',
                 hp: this.player.hp, maxHp: this.player.maxHp,
                 hunger: this.player.hunger, maxHunger: this.player.maxHunger,
                 thirst: this.player.thirst, maxThirst: this.player.maxThirst
@@ -2692,6 +2866,7 @@ class ReserveGame {
             if (jDist <= 24) {
                 hoveredEntity = {
                     title: 'Jock',
+                    status: formatStatus(this.dogJock.state),
                     hp: this.dogJock.hp, maxHp: this.dogJock.maxHp,
                     hunger: this.dogJock.hunger, maxHunger: this.dogJock.maxHunger,
                     thirst: this.dogJock.thirst, maxThirst: this.dogJock.maxThirst
@@ -2707,6 +2882,7 @@ class ReserveGame {
                 if (rDist <= 22) {
                     hoveredEntity = {
                         title: `Ranger: ${r.name}`,
+                        status: formatStatus(r.state),
                         hp: r.hp || 100, maxHp: r.maxHp || 100,
                         hunger: r.hunger || 100, maxHunger: r.maxHunger || 100,
                         thirst: r.thirst || 100, maxThirst: r.maxThirst || 100
@@ -2723,6 +2899,7 @@ class ReserveGame {
                 if (aDist <= 24) {
                     hoveredEntity = {
                         title: a.name,
+                        status: formatStatus(a.state),
                         hp: a.hp || 100, maxHp: a.maxHp || 100,
                         hunger: a.hunger || 100, maxHunger: a.maxHunger || 100,
                         thirst: a.thirst || 100, maxThirst: a.maxThirst || 100
@@ -2745,6 +2922,9 @@ class ReserveGame {
 
             const titleEl = document.getElementById('tooltip-entity-title');
             if (titleEl) titleEl.textContent = hoveredEntity.title;
+
+            const statusEl = document.getElementById('tooltip-entity-status');
+            if (statusEl) statusEl.textContent = `Status: ${hoveredEntity.status}`;
 
             const hpFill = document.getElementById('tooltip-hp-fill');
             const hpText = document.getElementById('tooltip-hp-text');
@@ -3471,6 +3651,25 @@ class ReserveGame {
             } else {
                 sleepBox.classList.add('hidden');
             }
+        }
+
+        // Update Jock Scout Toggle & Status Badge
+        const scoutToggle = document.getElementById('jock-scout-toggle');
+        const statusBadge = document.getElementById('jock-status-badge');
+        if (scoutToggle && this.dogJock) {
+            scoutToggle.checked = this.dogJock.scoutModeEnabled;
+        }
+        if (statusBadge && this.dogJock) {
+            const stateLabels = {
+                wandering: 'Idle',
+                thirsty: 'Thirsty',
+                drinking: 'Drinking',
+                hungry: 'Hungry',
+                eating: 'Eating',
+                scouting: 'Scouting',
+                returning_hq: 'Returning'
+            };
+            statusBadge.textContent = stateLabels[this.dogJock.state] || 'Idle';
         }
     }
 
@@ -4428,7 +4627,7 @@ class ReserveGame {
 
             this.updateProgressBar();
             this.renderedAnimals.forEach(a => a.update(deltaSec, this.waterhole));
-            if (this.dogJock) this.dogJock.update(deltaSec, this.waterhole, this.dogBowls);
+            if (this.dogJock) this.dogJock.update(deltaSec, this.waterhole, this.dogBowls, this);
         }, this.tickInterval);
     }
 
@@ -4525,6 +4724,11 @@ class ReserveGame {
         // Refresh Marketplace Listings
         this.animalMarketListings = generateAnimalListings(6);
         this.rangerListings = generateRangerListings(6);
+
+        // Reset Jock's daily scouting flag
+        if (this.dogJock) {
+            this.dogJock.hasScoutedToday = false;
+        }
 
         this.state.day += 1;
 
@@ -4959,7 +5163,7 @@ class ReserveGame {
         grid.appendChild(fenceCard);
     }
 
-    // Circular Minimap Renderer (Tracking Player, Reserve, Unlooted Crates, Zoom, and Off-Screen HQ Indicator)
+    // Circular Minimap Renderer (Tracking Player, Jock, Reserve, Unlooted Crates, Zoom, and Off-Screen HQ Indicator)
     renderMinimap() {
         if (!this.minimapCtx || !this.minimapCanvas) return;
         const ctx = this.minimapCtx;
@@ -4978,62 +5182,80 @@ class ReserveGame {
         ctx.fillStyle = '#0a100d';
         ctx.fillRect(0, 0, w, h);
 
-        // Base scale multiplied by dynamic minimap zoom factor
-        const baseScale = 0.035;
-        const scale = baseScale * this.minimapZoom;
         const centerX = w / 2;
         const centerY = h / 2;
+        const baseScale = 0.035;
+        const scale = baseScale * this.minimapZoom;
 
-        const worldToMinimap = (wx, wy) => {
-            const mx = centerX + (wx - this.player.x) * scale;
-            const my = centerY + (wy - this.player.y) * scale;
-            return { x: mx, y: my };
-        };
+        // Apply Context Translation and Scaling for direct world coordinate alignment
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.scale(scale, scale);
+        ctx.translate(-this.player.x, -this.player.y);
 
-        // Render Reserve Enclosure Bounds
-        const resTL = worldToMinimap(this.reserve.x, this.reserve.y);
-        const resBR = worldToMinimap(this.reserve.x + this.reserve.width, this.reserve.y + this.reserve.height);
-
+        // Render Reserve Enclosure Bounds in World Coordinates
         ctx.fillStyle = 'rgba(46, 204, 113, 0.15)';
-        ctx.fillRect(resTL.x, resTL.y, resBR.x - resTL.x, resBR.y - resTL.y);
+        ctx.fillRect(this.reserve.x, this.reserve.y, this.reserve.width, this.reserve.height);
         ctx.strokeStyle = '#f39c12';
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(resTL.x, resTL.y, resBR.x - resTL.x, resBR.y - resTL.y);
+        ctx.lineWidth = 2 / scale;
+        ctx.strokeRect(this.reserve.x, this.reserve.y, this.reserve.width, this.reserve.height);
 
-        // Render Unlooted Crates in Revealed Fog
+        // Render Unlooted Forgotten Ranger Chests inside revealed Fog of War chunks as bright gold dots
         const crates = this.chunkManager.getAllCrates();
         crates.forEach(crate => {
             if (crate.looted) return;
             const cx = Math.floor(crate.x / 1000);
             const cy = Math.floor(crate.y / 1000);
             if (this.revealedChunks.has(`${cx},${cy}`)) {
-                const pos = worldToMinimap(crate.x, crate.y);
-                ctx.fillStyle = '#f1c40f';
-                ctx.fillRect(pos.x - 3, pos.y - 3, 6, 6);
+                ctx.fillStyle = '#ffd700'; // Bright Gold
+                ctx.beginPath();
+                ctx.arc(crate.x, crate.y, 6 / scale, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.5 / scale;
+                ctx.stroke();
             }
         });
+
+        // Render Jock on the minimap as a unique, bright icon so player can track live coordinates while scouting
+        if (this.dogJock) {
+            ctx.fillStyle = '#ff7700'; // Bright Orange/Gold
+            ctx.beginPath();
+            ctx.arc(this.dogJock.x, this.dogJock.y, 7 / scale, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2 / scale;
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffff00';
+            ctx.beginPath();
+            ctx.arc(this.dogJock.x, this.dogJock.y, 3 / scale, 0, Math.PI * 2);
+            ctx.fill();
+        }
 
         // Render Player Dot
         ctx.fillStyle = '#3498db';
         ctx.beginPath();
-        ctx.arc(centerX, centerY, 4, 0, Math.PI * 2);
+        ctx.arc(this.player.x, this.player.y, 5 / scale, 0, Math.PI * 2);
         ctx.fill();
-
         ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 1.5 / scale;
         ctx.stroke();
+
+        ctx.restore(); // Restore context transformation back to screen coordinates
 
         // Check Reserve HQ Off-Screen Status and Render Directional Indicator Arrow
         const hqWorldX = this.hq.x + this.hq.width / 2;
         const hqWorldY = this.hq.y + this.hq.height / 2;
-        const hqPos = worldToMinimap(hqWorldX, hqWorldY);
+        const hqScreenX = centerX + (hqWorldX - this.player.x) * scale;
+        const hqScreenY = centerY + (hqWorldY - this.player.y) * scale;
 
         const radiusMap = w / 2 - 10;
-        const distFromCenter = Math.hypot(hqPos.x - centerX, hqPos.y - centerY);
+        const distFromCenter = Math.hypot(hqScreenX - centerX, hqScreenY - centerY);
 
         if (distFromCenter > radiusMap) {
             // Reserve HQ is off-screen on the minimap, draw edge directional arrow
-            const angle = Math.atan2(hqPos.y - centerY, hqPos.x - centerX);
+            const angle = Math.atan2(hqScreenY - centerY, hqScreenX - centerX);
             const arrowX = centerX + Math.cos(angle) * radiusMap;
             const arrowY = centerY + Math.sin(angle) * radiusMap;
 
@@ -5054,7 +5276,7 @@ class ReserveGame {
         } else {
             // Reserve HQ is visible on minimap
             ctx.fillStyle = '#e67e22';
-            ctx.fillRect(hqPos.x - 4, hqPos.y - 4, 8, 8);
+            ctx.fillRect(hqScreenX - 4, hqScreenY - 4, 8, 8);
         }
 
         ctx.restore();

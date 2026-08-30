@@ -105,6 +105,27 @@
                     <div id="hq-pet-slots" class="slots-array-grid"></div>
                 </div>
 
+                <!-- Jock Scout Mode Controls -->
+                <div class="accommodation-section" style="border-color: var(--accent-gold);">
+                    <h4 style="color: var(--accent-gold); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                        <span>🐕 Jock's AI & Scout Operations</span>
+                        <span id="jock-status-badge" class="badge badge-good">Idle</span>
+                    </h4>
+                    <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px;">
+                        <div>
+                            <strong style="font-size: 0.9rem; color: var(--text-main); display: block;">Scout Mode</strong>
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">Leave HQ daily to reveal unrevealed Fog of War chunks</span>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="jock-scout-toggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <button id="recall-jock-btn" class="action-btn" style="background: linear-gradient(135deg, #e74c3c, #c0392b); color: white; margin-top: 6px;">
+                        🚨 Recall Jock to HQ
+                    </button>
+                </div>
+
                 <div id="hq-sleep-container" class="hidden" style="background: rgba(41, 128, 185, 0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--accent-blue); text-align: center;">
                     <h4 style="color: var(--accent-blue); margin-bottom: 6px;">🌙 Nighttime Operations</h4>
                     <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 10px;">It is dark outside. Rest in Reserve HQ until dawn.</p>
@@ -248,6 +269,7 @@
                 <p class="companion-flavor">Golden-coated, pointy-eared companion</p>
             </div>
             <div id="tooltip-entity-title" class="tooltip-title">Entity Name</div>
+            <div id="tooltip-entity-status" class="tooltip-status">Status: Idle</div>
             <div class="tooltip-stats">
                 <div class="tooltip-bar-group">
                     <span class="tooltip-label">❤️ HP</span>
