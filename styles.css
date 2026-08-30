@@ -315,10 +315,8 @@ canvas#reserveCanvas {
 }
 
 /* Interactive components enable pointer events */
-.survival-hud,
 .top-hud,
 .master-sidebar,
-.hotbar-container,
 .minimap-container,
 .modal-card,
 .status-banner,
@@ -540,68 +538,11 @@ input:checked + .toggle-slider:before {
     transform: translateX(22px);
 }
 
-/* Player Survival HUD (Top-Left) */
-.survival-hud {
-    position: absolute;
-    top: 10px;
-    left: 15px;
-    z-index: 50;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    background: var(--bg-glass);
-    border: 2px solid var(--border-highlight);
-    padding: 8px 12px;
-    border-radius: 8px;
-    box-shadow: inset 0 0 12px rgba(80, 50, 20, 0.25), 0 4px 12px rgba(0, 0, 0, 0.5);
-    min-width: 160px;
-}
-
-.survival-bar-group {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-}
-
-.survival-label {
-    font-size: 0.75rem;
-    font-weight: bold;
-    color: var(--text-main);
-    width: 65px;
-}
-
-.survival-bar {
-    flex: 1;
-    height: 12px;
-    background: rgba(0, 0, 0, 0.6);
-    border-radius: 6px;
-    overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.bar-fill {
-    height: 100%;
-    transition: width 0.2s ease-out;
-}
-
-.hp-fill {
-    background: linear-gradient(90deg, #e74c3c, #2ecc71);
-}
-
-.thirst-fill {
-    background: linear-gradient(90deg, #2980b9, #3498db);
-}
-
-.hunger-fill {
-    background: linear-gradient(90deg, #d35400, #f39c12);
-}
-
 /* Top HUD Header */
 .top-hud {
     background: var(--bg-glass);
     border-bottom: 3px double var(--border-highlight);
-    padding: 8px 16px 8px 185px;
+    padding: 8px 16px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -791,9 +732,11 @@ input:checked + .toggle-slider:before {
     border-radius: 10px;
     overflow: hidden;
     transition: border-color 0.2s ease;
+    display: flex;
+    flex-direction: column;
 }
 
-.sidebar-section[open] {
+.sidebar-section:hover {
     border-color: var(--border-highlight);
 }
 
@@ -802,19 +745,14 @@ input:checked + .toggle-slider:before {
     font-size: 0.9rem;
     font-weight: bold;
     color: var(--accent-gold);
-    cursor: pointer;
     background: rgba(0, 0, 0, 0.25);
     user-select: none;
-    transition: background 0.2s;
-}
-
-.section-header:hover {
-    background: rgba(243, 156, 18, 0.15);
+    border-bottom: 1px solid var(--border-color);
 }
 
 .sidebar-section .panel-grid {
     padding: 10px;
-    max-height: 280px;
+    max-height: 220px;
     overflow-y: auto;
 }
 
@@ -947,73 +885,6 @@ input:checked + .toggle-slider:before {
     background: linear-gradient(135deg, #4b7a2b, #32541a);
 }
 
-/* Persistent 5-Slot Hotbar (Bottom Center) */
-.hotbar-container {
-    position: absolute;
-    bottom: 35px;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    gap: 6px;
-    background: var(--bg-glass);
-    border: 3px double var(--border-highlight);
-    padding: 5px 8px;
-    border-radius: 8px;
-    box-shadow: inset 0 0 10px rgba(80, 50, 20, 0.25), 0 6px 20px rgba(0, 0, 0, 0.5);
-    z-index: 50;
-}
-
-.hotbar-slot {
-    width: 46px;
-    height: 46px;
-    background: var(--bg-glass-card);
-    border: 2px solid var(--border-color);
-    border-radius: 6px;
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
-}
-
-.hotbar-slot:hover {
-    background: var(--bg-glass-hover);
-    border-color: var(--accent-gold);
-}
-
-.hotbar-slot.active {
-    border-color: var(--accent-gold);
-    box-shadow: inset 0 0 8px rgba(107, 62, 16, 0.4), 0 0 10px rgba(107, 62, 16, 0.6);
-    transform: translateY(-3px);
-    background: rgba(188, 161, 117, 0.95);
-}
-
-.hotbar-key {
-    position: absolute;
-    top: 2px;
-    left: 4px;
-    font-size: 0.65rem;
-    font-weight: bold;
-    color: var(--accent-gold);
-}
-
-.hotbar-icon {
-    font-size: 1.4rem;
-}
-
-.hotbar-count {
-    position: absolute;
-    bottom: 2px;
-    right: 4px;
-    font-size: 0.65rem;
-    font-weight: bold;
-    color: var(--text-main);
-    background: rgba(0, 0, 0, 0.6);
-    padding: 0 3px;
-    border-radius: 3px;
-}
 
 /* Minimap UI Widget in Bottom-Left Corner */
 .minimap-container {

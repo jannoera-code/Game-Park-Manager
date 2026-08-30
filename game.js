@@ -970,6 +970,19 @@ class Chunk {
             }
 
             const type = seededRandom(localSeed++) > 0.4 ? 'wood' : 'stone';
+            const nodeRadius = type === 'wood' ? 22 : 18;
+
+            // Ensure trees and stones never overlap with existing nodes
+            let overlaps = false;
+            for (const existingNode of this.resourceNodes) {
+                const dist = Math.hypot(nodeX - existingNode.x, nodeY - existingNode.y);
+                if (dist < nodeRadius + existingNode.radius + 12) {
+                    overlaps = true;
+                    break;
+                }
+            }
+            if (overlaps) continue;
+
             const nodeId = `node_${this.chunkX}_${this.chunkY}_${i}`;
             this.resourceNodes.push(new ResourceNode(nodeId, type, nodeX, nodeY));
         }
@@ -1998,10 +2011,53 @@ class Ranger {
     }
 
     update(dt, waterhole, gameInstance = null) {
-        // Universal Thirst AI Decay
+        // Universal Thirst & Hunger AI Decay
         this.thirst = Math.max(0, this.thirst - dt * 0.8);
+        this.hunger = Math.max(0, this.hunger - dt * 0.4);
 
-        // Check Thirst Threshold
+        if (this.hunger <= 0) this.starvingTimer = (this.starvingTimer || 0) + dt;
+        else this.starvingTimer = 0;
+
+        if (this.thirst <= 0) this.dehydratedTimer = (this.dehydratedTimer || 0) + dt;
+        else this.dehydratedTimer = 0;
+
+        // Needs & Penalties (No Death):
+        // 0 Hunger or 0 Thirst applies Base Penalty (-25% Max HP, -15% move/work speed)
+        // After 2 days (600s), applies Critical Penalty (-50% Max HP, -30% move/work speed)
+        // Hard-caps at -75% Max HP, -60% move/work speed
+        let maxHpPenalty = 0;
+        let speedPenalty = 0;
+
+        if (this.hunger <= 0) {
+            maxHpPenalty += (this.starvingTimer >= 600) ? 0.50 : 0.25;
+            speedPenalty += (this.starvingTimer >= 600) ? 0.30 : 0.15;
+        }
+        if (this.thirst <= 0) {
+            maxHpPenalty += (this.dehydratedTimer >= 600) ? 0.50 : 0.25;
+            speedPenalty += (this.dehydratedTimer >= 600) ? 0.30 : 0.15;
+        }
+
+        maxHpPenalty = Math.min(0.75, maxHpPenalty);
+        speedPenalty = Math.min(0.60, speedPenalty);
+
+        this.maxHp = Math.round(100 * (1 - maxHpPenalty));
+        this.hp = Math.max(1, Math.min(this.hp, this.maxHp)); // NO DEATH: hard-capped at 1 HP minimum
+
+        let speedMult = 1.0;
+        let workMult = 1.0;
+        this.traits.forEach(t => {
+            if (t.effects && t.effects.moveSpeedMult) speedMult *= t.effects.moveSpeedMult;
+            if (t.effects && t.effects.workSpeedMult) workMult *= t.effects.workSpeedMult;
+        });
+        if (this.buff && this.buff.effect) {
+            if (this.buff.effect.moveSpeedMult) speedMult *= this.buff.effect.moveSpeedMult;
+            if (this.buff.effect.workSpeedMult) workMult *= this.buff.effect.workSpeedMult;
+        }
+
+        this.baseSpeed = 45 * speedMult * (1 - speedPenalty);
+        this.workSpeedMult = workMult * (1 - speedPenalty);
+
+        // Check Thirst Threshold (< 30%)
         if (this.thirst < 30 && this.state !== 'seeking_water' && this.state !== 'drinking') {
             this.savedStateBeforeThirst = this.state;
             this.state = 'seeking_water';
@@ -2024,6 +2080,19 @@ class Ranger {
                 this.savedStateBeforeThirst = null;
             }
             return;
+        }
+
+        // Night Sleeping Need
+        if (gameInstance && gameInstance.isNight()) {
+            const distToHousing = Math.hypot(this.hutX - this.x, this.hutY - this.y);
+            if (distToHousing < 25) {
+                this.state = 'sleeping';
+            } else {
+                this.moveTowards(this.hutX, this.hutY, dt);
+            }
+            return;
+        } else if (this.state === 'sleeping') {
+            this.state = 'patrolling';
         }
 
         // Job Routines execution if gameInstance is available
@@ -2648,9 +2717,9 @@ class ReserveGame {
             upgradesSpent: 0
         };
 
-        // Reserve Fixed Coordinate Zone
+        // Reserve Fixed Coordinate Zone (Exact Central HQ Placement)
         this.reserve = { x: 500, y: 500, width: 1000, height: 1000 };
-        this.hq = { x: this.reserve.x + 172, y: this.reserve.y + 172, width: 144, height: 144 };
+        this.hq = { x: this.reserve.x + (this.reserve.width - 144) / 2, y: this.reserve.y + (this.reserve.height - 144) / 2, width: 144, height: 144 };
         this.campChest = new CampChest('camp_chest_init', this.hq.x + this.hq.width + 30, this.hq.y + 72);
         this.activeRangerHut = null;
         this.gridSize = 20;
@@ -2684,8 +2753,10 @@ class ReserveGame {
 
         // OOP Managers & Audio Systems
         this.audioManager = new AudioManager();
-        this.inventory = new Inventory(25, 100); // 25 slots (20 Backpack + 5 Hotbar), 100 max stack
-        this.activeHotbarIndex = 0; // 0 to 4 (corresponding to slots 20 to 24)
+        this.inventory = this.campChest.inventory; // Camp Chest as sole global storage
+        this.inventory.addItem('wood', 30, 'Wood');
+        this.inventory.addItem('stone', 15, 'Stone');
+        this.activeHotbarIndex = 0;
         this.chunkManager = new ChunkManager(1000, 2);
         this.player = new Player(250, 250);
         this.waterhole = new Waterhole(this.reserve.x + 500, this.reserve.y + 500);
@@ -3497,6 +3568,15 @@ class ReserveGame {
         const mx = this.mouse.worldX;
         const my = this.mouse.worldY;
 
+        // Check if clicked Camp Chest
+        if (this.campChest) {
+            const distChest = Math.hypot(mx - this.campChest.x, my - this.campChest.y);
+            if (distChest <= this.campChest.radius + 20) {
+                this.toggleInventoryModal();
+                return;
+            }
+        }
+
         // Check if clicked a Ranger
         let foundRanger = null;
         for (const r of this.rangers) {
@@ -3627,20 +3707,8 @@ class ReserveGame {
             return mapping[stateStr] || 'Active';
         };
 
-        // Check Player
-        const pDist = Math.hypot(mx - this.player.x, my - this.player.y);
-        if (pDist <= this.player.radius + 10) {
-            hoveredEntity = {
-                title: 'Player (You)',
-                status: 'Active',
-                hp: this.player.hp, maxHp: this.player.maxHp,
-                hunger: this.player.hunger, maxHunger: this.player.maxHunger,
-                thirst: this.player.thirst, maxThirst: this.player.maxThirst
-            };
-        }
-
         // Check Jock
-        if (!hoveredEntity && this.dogJock) {
+        if (this.dogJock) {
             const jDist = Math.hypot(mx - this.dogJock.x, my - this.dogJock.y);
             if (jDist <= 24) {
                 hoveredEntity = {
@@ -5004,12 +5072,10 @@ class ReserveGame {
         if (creativeCheckbox) {
             this.state.isCreativeMode = creativeCheckbox.checked;
         }
-        this.inventory = new Inventory(25, 100);
-        this.player.x = 250;
-        this.player.y = 250;
-        this.player.hp = 100;
-        this.player.thirst = 100;
-        this.player.hunger = 100;
+        this.campChest = new CampChest('camp_chest_init', this.hq.x + this.hq.width + 30, this.hq.y + 72);
+        this.inventory = this.campChest.inventory;
+        this.inventory.addItem('wood', 30, 'Wood');
+        this.inventory.addItem('stone', 15, 'Stone');
 
         this.rangers = [];
         this.furnaces = [];
@@ -5621,9 +5687,6 @@ class ReserveGame {
             this.revealedChunks.add(`${chunkX},${chunkY}`);
 
             const resourceNodes = this.chunkManager.getAllResourceNodes();
-            if (this.player) {
-                this.player.update(dt, {}, resourceNodes, this.state.placedBuildings, this.hq);
-            }
             this.chunkManager.update(this.camera.x, this.camera.y, this.reserve, dt);
 
             // Hold-to-mine logic when tool equipped
@@ -6154,11 +6217,14 @@ class ReserveGame {
         const baseScale = 0.035;
         const scale = baseScale * this.minimapZoom;
 
-        // Apply Context Translation and Scaling for direct world coordinate alignment
+        // Apply Context Translation and Scaling centered on Camera position
+        const camX = this.camera ? this.camera.x : (this.player ? this.player.x : 1000);
+        const camY = this.camera ? this.camera.y : (this.player ? this.player.y : 1000);
+
         ctx.save();
         ctx.translate(centerX, centerY);
         ctx.scale(scale, scale);
-        ctx.translate(-this.player.x, -this.player.y);
+        ctx.translate(-camX, -camY);
 
         // Render Reserve Enclosure Bounds in World Coordinates
         ctx.fillStyle = 'rgba(46, 204, 113, 0.15)';
@@ -6184,7 +6250,7 @@ class ReserveGame {
             }
         });
 
-        // Render Jock on the minimap as a unique, bright icon so player can track live coordinates while scouting
+        // Render Jock on the minimap
         if (this.dogJock) {
             ctx.fillStyle = '#ff7700'; // Bright Orange/Gold
             ctx.beginPath();
@@ -6200,22 +6266,41 @@ class ReserveGame {
             ctx.fill();
         }
 
-        // Render Player Dot
-        ctx.fillStyle = '#3498db';
-        ctx.beginPath();
-        ctx.arc(this.player.x, this.player.y, 5 / scale, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.5 / scale;
-        ctx.stroke();
+        // Render Rangers on minimap
+        (this.rangers || []).forEach(r => {
+            ctx.fillStyle = '#2ecc71'; // Bright Green for Rangers
+            ctx.beginPath();
+            ctx.arc(r.x, r.y, 6 / scale, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.5 / scale;
+            ctx.stroke();
+        });
+
+        // Draw Overseer Camera Viewport Rectangle on Minimap
+        if (this.canvas) {
+            const screenW = this.canvas.width;
+            const screenH = this.canvas.height;
+            const camScale = this.camera ? this.camera.scale : 0.65;
+            const viewWorldW = screenW / camScale;
+            const viewWorldH = screenH / camScale;
+            const viewMinX = camX - viewWorldW / 2;
+            const viewMinY = camY - viewWorldH / 2;
+
+            ctx.strokeStyle = '#00ffff'; // Cyan highlight rectangle for viewport
+            ctx.lineWidth = 2.5 / scale;
+            ctx.strokeRect(viewMinX, viewMinY, viewWorldW, viewWorldH);
+            ctx.fillStyle = 'rgba(0, 255, 255, 0.1)';
+            ctx.fillRect(viewMinX, viewMinY, viewWorldW, viewWorldH);
+        }
 
         ctx.restore(); // Restore context transformation back to screen coordinates
 
         // Check Reserve HQ Off-Screen Status and Render Directional Indicator Arrow
         const hqWorldX = this.hq.x + this.hq.width / 2;
         const hqWorldY = this.hq.y + this.hq.height / 2;
-        const hqScreenX = centerX + (hqWorldX - this.player.x) * scale;
-        const hqScreenY = centerY + (hqWorldY - this.player.y) * scale;
+        const hqScreenX = centerX + (hqWorldX - camX) * scale;
+        const hqScreenY = centerY + (hqWorldY - camY) * scale;
 
         const radiusMap = w / 2 - 10;
         const distFromCenter = Math.hypot(hqScreenX - centerX, hqScreenY - centerY);
@@ -6250,60 +6335,73 @@ class ReserveGame {
     }
 
     renderSavannahBackground(viewBounds) {
-        const tileSize = 48; // Base grid tile size
-        const minTileX = Math.floor(viewBounds.minX / tileSize) - 1;
-        const maxTileX = Math.ceil(viewBounds.maxX / tileSize) + 1;
-        const minTileY = Math.floor(viewBounds.minY / tileSize) - 1;
-        const maxTileY = Math.ceil(viewBounds.maxY / tileSize) + 1;
+        // Base ground fill
+        this.ctx.fillStyle = '#7a683a'; // Natural savannah dry grass base
+        this.ctx.fillRect(
+            viewBounds.minX - 50,
+            viewBounds.minY - 50,
+            (viewBounds.maxX - viewBounds.minX) + 100,
+            (viewBounds.maxY - viewBounds.minY) + 100
+        );
 
-        const reserveX1 = this.reserve.x;
-        const reserveX2 = this.reserve.x + this.reserve.width;
-        const reserveY1 = this.reserve.y;
-        const reserveY2 = this.reserve.y + this.reserve.height;
+        // Reserve interior natural lush grass fill
+        this.ctx.fillStyle = '#5c733a';
+        this.ctx.fillRect(this.reserve.x, this.reserve.y, this.reserve.width, this.reserve.height);
 
-        const isInsideReserve = (x, y) => (x >= reserveX1 && x < reserveX2 && y >= reserveY1 && y < reserveY2);
+        // Smooth noise-based transitional terrain patches
+        const patchSize = 120;
+        const minPatchX = Math.floor(viewBounds.minX / patchSize) - 1;
+        const maxPatchX = Math.ceil(viewBounds.maxX / patchSize) + 1;
+        const minPatchY = Math.floor(viewBounds.minY / patchSize) - 1;
+        const maxPatchY = Math.ceil(viewBounds.maxY / patchSize) + 1;
 
         const time = Date.now() * 0.002;
 
-        for (let tx = minTileX; tx <= maxTileX; tx++) {
-            for (let ty = minTileY; ty <= maxTileY; ty++) {
-                const worldX = tx * tileSize;
-                const worldY = ty * tileSize;
-                const seed = hashCoordinates(tx, ty);
+        for (let px = minPatchX; px <= maxPatchX; px++) {
+            for (let py = minPatchY; py <= maxPatchY; py++) {
+                const worldX = px * patchSize;
+                const worldY = py * patchSize;
+                const seed = hashCoordinates(px, py);
                 const randVal = seededRandom(seed);
                 const randVal2 = seededRandom(seed + 1);
 
-                const inReserve = isInsideReserve(worldX + tileSize / 2, worldY + tileSize / 2);
+                const patchCenterX = worldX + (randVal - 0.5) * 40 + patchSize / 2;
+                const patchCenterY = worldY + (randVal2 - 0.5) * 40 + patchSize / 2;
+                const patchRadius = 60 + randVal * 50;
 
-                // Base ground color blend (arid dirt vs golden dry grass vs green grass)
+                const inReserve = (
+                    patchCenterX >= this.reserve.x && patchCenterX <= this.reserve.x + this.reserve.width &&
+                    patchCenterY >= this.reserve.y && patchCenterY <= this.reserve.y + this.reserve.height
+                );
+
+                // Organic radial gradient patch
+                const grad = this.ctx.createRadialGradient(
+                    patchCenterX, patchCenterY, 5,
+                    patchCenterX, patchCenterY, patchRadius
+                );
+
                 if (inReserve) {
-                    if (randVal < 0.45) {
-                        this.ctx.fillStyle = '#4c6331'; // grassy reserve
-                    } else if (randVal < 0.8) {
-                        this.ctx.fillStyle = '#5c733a';
-                    } else {
-                        this.ctx.fillStyle = '#7a7a40'; // arid patch inside reserve
-                    }
+                    const color = randVal < 0.5 ? 'rgba(76, 99, 49, 0.6)' : 'rgba(122, 122, 64, 0.5)';
+                    grad.addColorStop(0, color);
+                    grad.addColorStop(1, 'rgba(92, 115, 58, 0)');
                 } else {
-                    if (randVal < 0.4) {
-                        this.ctx.fillStyle = '#8f7748'; // arid dirt
-                    } else if (randVal < 0.75) {
-                        this.ctx.fillStyle = '#7a683a'; // dry savannah grass
-                    } else {
-                        this.ctx.fillStyle = '#4a5e2f'; // green grassy patch
-                    }
+                    const color = randVal < 0.4 ? 'rgba(143, 119, 72, 0.65)' : (randVal < 0.7 ? 'rgba(74, 94, 47, 0.55)' : 'rgba(105, 85, 45, 0.6)');
+                    grad.addColorStop(0, color);
+                    grad.addColorStop(1, 'rgba(122, 104, 58, 0)');
                 }
 
-                this.ctx.fillRect(worldX, worldY, tileSize, tileSize);
+                this.ctx.fillStyle = grad;
+                this.ctx.beginPath();
+                this.ctx.arc(patchCenterX, patchCenterY, patchRadius, 0, Math.PI * 2);
+                this.ctx.fill();
 
-                // Add scattered details (swaying grass tufts / pebbles)
-                if (randVal2 < 0.55) {
-                    // Grass tuft
-                    const tuftX = worldX + 8 + (randVal * 32);
-                    const tuftY = worldY + 12 + (randVal2 * 24);
+                // Add scattered grass details
+                if (randVal2 < 0.6) {
+                    const tuftX = patchCenterX + (randVal - 0.5) * 40;
+                    const tuftY = patchCenterY + (randVal2 - 0.5) * 40;
                     const sway = Math.sin(time + seed) * 3;
 
-                    this.ctx.strokeStyle = randVal < 0.5 ? '#3b5220' : (randVal < 0.8 ? '#9e8736' : '#2b3d16');
+                    this.ctx.strokeStyle = randVal < 0.5 ? '#3b5220' : '#9e8736';
                     this.ctx.lineWidth = 1.5;
 
                     this.ctx.beginPath();
@@ -6314,14 +6412,6 @@ class ReserveGame {
                     this.ctx.moveTo(tuftX, tuftY);
                     this.ctx.quadraticCurveTo(tuftX + 4 + sway, tuftY - 6, tuftX + 6 + sway, tuftY - 9);
                     this.ctx.stroke();
-                } else if (randVal2 < 0.7) {
-                    // Small pebble
-                    const pebbleX = worldX + 10 + (randVal * 28);
-                    const pebbleY = worldY + 10 + (randVal2 * 28);
-                    this.ctx.fillStyle = '#544634';
-                    this.ctx.beginPath();
-                    this.ctx.arc(pebbleX, pebbleY, 1.5, 0, Math.PI * 2);
-                    this.ctx.fill();
                 }
             }
         }
@@ -6330,24 +6420,6 @@ class ReserveGame {
         this.ctx.strokeStyle = 'rgba(107, 62, 16, 0.4)';
         this.ctx.lineWidth = 3;
         this.ctx.strokeRect(this.reserve.x, this.reserve.y, this.reserve.width, this.reserve.height);
-
-        // Grid Lines (subtle earthy lines)
-        this.ctx.strokeStyle = 'rgba(60, 40, 20, 0.08)';
-        this.ctx.lineWidth = 1;
-        const startX = Math.floor(viewBounds.minX / tileSize) * tileSize;
-        const startY = Math.floor(viewBounds.minY / tileSize) * tileSize;
-        for (let x = startX; x <= viewBounds.maxX; x += tileSize) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(x, viewBounds.minY);
-            this.ctx.lineTo(x, viewBounds.maxY);
-            this.ctx.stroke();
-        }
-        for (let y = startY; y <= viewBounds.maxY; y += tileSize) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(viewBounds.minX, y);
-            this.ctx.lineTo(viewBounds.maxX, y);
-            this.ctx.stroke();
-        }
     }
 
     // World Canvas Renderer
@@ -6629,8 +6701,6 @@ class ReserveGame {
         // 7. Render Rangers
         this.rangers.forEach(ranger => ranger.render(this.ctx, this.images));
 
-        // 8. Render Player
-        this.player.render(this.ctx, this.images);
 
         // 9. Dynamic Lighting Overlay for Night Phase
         const nightAlpha = this.getNightDarknessAlpha();
@@ -6670,8 +6740,9 @@ class ReserveGame {
                 lCtx.fill();
             };
 
-            // Player light pool
-            drawLightPool(this.player.x, this.player.y, 160);
+            // Rangers & Overseer camera light pools
+            this.rangers.forEach(r => drawLightPool(r.x, r.y, 140));
+            drawLightPool(this.camera.x, this.camera.y, 220);
 
             // Placed buildings light pools (Torches, Furnaces, Braais)
             this.state.placedBuildings.forEach(b => {
