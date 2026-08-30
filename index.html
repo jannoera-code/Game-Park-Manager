@@ -43,6 +43,92 @@
         </div>
     </div>
 
+    <!-- Morning Summary Modal -->
+    <div id="morning-recap-modal" class="modal-backdrop hidden">
+        <div class="modal-card recap-card">
+            <div class="modal-header">
+                <h3>☀️ Morning Summary - Day <span id="morning-day-num">2</span></h3>
+            </div>
+            <div class="modal-body">
+                <div class="recap-summary-box">
+                    <h4 style="color: var(--accent-gold); text-align: center;">Yesterday's Operations</h4>
+                    <div class="recap-row">
+                        <span>🪵 Wood Net Change:</span>
+                        <strong id="morning-wood-change">+0</strong>
+                    </div>
+                    <div class="recap-row">
+                        <span>🪨 Stone Net Change:</span>
+                        <strong id="morning-stone-change">+0</strong>
+                    </div>
+                    <div class="recap-row">
+                        <span>🍖 Meat Net Change:</span>
+                        <strong id="morning-meat-change">+0</strong>
+                    </div>
+                    <div class="recap-row">
+                        <span>💰 Funds Earned / Spent:</span>
+                        <strong id="morning-funds-change">+$0</strong>
+                    </div>
+                    <div class="recap-divider"></div>
+                    <div class="recap-subrow">
+                        <span>🤠 Staff Acquired:</span>
+                        <span id="morning-staff-acquired">0</span>
+                    </div>
+                    <div class="recap-subrow">
+                        <span>🦁 Animals Acquired:</span>
+                        <span id="morning-animals-acquired">0</span>
+                    </div>
+                </div>
+                <button id="start-day-btn" class="action-btn positive-btn" style="padding: 12px; font-size: 1rem; margin-top: 10px;">
+                    🌅 Start Day
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reserve HQ Assignment Modal -->
+    <div id="hq-modal" class="modal-backdrop hidden">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>🏛️ Reserve HQ Operations</h3>
+                <button id="close-hq-btn" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="background: var(--bg-glass-card); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); text-align: center;">
+                    <h4 style="color: var(--accent-gold); margin-bottom: 6px;">Player Assignment Status</h4>
+                    <p id="hq-assignment-status" style="font-size: 0.9rem; margin-bottom: 10px; color: var(--text-main);">Unassigned</p>
+                    <button id="toggle-player-hq-assignment-btn" class="action-btn positive-btn">Assign Player to HQ</button>
+                </div>
+
+                <div id="hq-sleep-container" class="hidden" style="background: rgba(41, 128, 185, 0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--accent-blue); text-align: center;">
+                    <h4 style="color: var(--accent-blue); margin-bottom: 6px;">🌙 Nighttime Operations</h4>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 10px;">It is dark outside. Rest in Reserve HQ until dawn.</p>
+                    <button id="sleep-till-morning-btn" class="action-btn" style="background: linear-gradient(135deg, #3498db, #8e44ad); color: white;">😴 Sleep till Morning (06:00)</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ranger Hut Assignment Modal -->
+    <div id="ranger-hut-modal" class="modal-backdrop hidden">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>🏠 Ranger Hut Management</h3>
+                <button id="close-ranger-hut-btn" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="background: var(--bg-glass-card); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <h4 style="color: var(--accent-gold); margin-bottom: 8px;">Assigned Ranger</h4>
+                    <p id="ranger-hut-assigned-text" style="font-size: 0.9rem; margin-bottom: 10px; color: var(--text-main);">None</p>
+                    <div id="ranger-hut-assign-controls" style="display: flex; flex-direction: column; gap: 8px;">
+                        <select id="ranger-hut-select" style="padding: 8px; border-radius: 6px; background: #1a252c; color: var(--text-main); border: 1px solid var(--border-color);"></select>
+                        <button id="assign-ranger-hut-btn" class="action-btn positive-btn">Assign Selected Ranger</button>
+                        <button id="unassign-ranger-hut-btn" class="action-btn" style="background: var(--accent-red); color: white;">Unassign Ranger</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Weekly Finance Recap Modal -->
     <div id="weekly-recap-modal" class="modal-backdrop hidden">
         <div class="modal-card recap-card">
