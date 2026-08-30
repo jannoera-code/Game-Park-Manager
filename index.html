@@ -330,7 +330,7 @@
                 <div id="day-progress-bar" class="day-progress-fill"></div>
             </div>
 
-            <!-- Quick Stats Bar (Wood and Stone removed) -->
+            <!-- Quick Stats Bar (Global HQ Storage) -->
             <div class="stats-ribbon">
                 <div class="stat-pill">
                     <span class="stat-label">Funds</span>
@@ -341,16 +341,20 @@
                     <span id="stat-dosh" class="stat-value" style="color: var(--accent-gold);">0</span>
                 </div>
                 <div class="stat-pill">
-                    <span class="stat-label">Daily Income</span>
-                    <span id="stat-net-income" class="stat-value positive">+$0/d</span>
+                    <span class="stat-label">HQ Wood</span>
+                    <span id="stat-hq-wood" class="stat-value">30</span>
+                </div>
+                <div class="stat-pill">
+                    <span class="stat-label">HQ Stone</span>
+                    <span id="stat-hq-stone" class="stat-value">15</span>
+                </div>
+                <div class="stat-pill">
+                    <span class="stat-label">HQ P-Stone</span>
+                    <span id="stat-hq-pstone" class="stat-value">0</span>
                 </div>
                 <div class="stat-pill">
                     <span class="stat-label">Capacity</span>
                     <span id="stat-capacity" class="stat-value">0 / 5</span>
-                </div>
-                <div class="stat-pill">
-                    <span class="stat-label">P-Stone</span>
-                    <span id="stat-pstone" class="stat-value">0</span>
                 </div>
             </div>
         </header>
@@ -587,10 +591,11 @@
 
         <!-- Controls Guide Footer Overlay -->
         <div class="controls-guide">
-            <span><strong>[WASD / Arrows]</strong> Move Player</span>
-            <span><strong>[E]</strong> Open Inventory Grid</span>
-            <span><strong>[Left Click]</strong> Harvest / Interact / Open Furnace ([R] Rotate)</span>
-            <span><strong>[ESC]</strong> Close / Cancel</span>
+            <span><strong>[WASD / Arrows]</strong> Pan Overseer Camera</span>
+            <span><strong>[Left Click]</strong> Select Ranger / Building</span>
+            <span><strong>[Right Click]</strong> Move / Target Command</span>
+            <span><strong>[E]</strong> Global Storage</span>
+            <span><strong>[ESC]</strong> Deselect / Pause</span>
         </div>
     </div>
 

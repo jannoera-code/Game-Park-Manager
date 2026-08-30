@@ -2198,9 +2198,20 @@ class ReserveGame {
         // Reserve Fixed Coordinate Zone
         this.reserve = { x: 500, y: 500, width: 1000, height: 1000 };
         this.hq = { x: this.reserve.x + 172, y: this.reserve.y + 172, width: 144, height: 144 };
-        this.isPlayerAssignedToHQ = false;
         this.activeRangerHut = null;
         this.gridSize = 20;
+
+        // Overseer Camera System
+        this.camera = {
+            x: this.hq.x + this.hq.width / 2,
+            y: this.hq.y + this.hq.height / 2,
+            scale: 0.65,
+            speed: 700
+        };
+
+        // Selection & Command System
+        this.selectedRanger = null;
+        this.selectedEntity = null;
 
         // Fog of War & Minimap Systems
         this.revealedChunks = new Set();
@@ -2470,10 +2481,12 @@ class ReserveGame {
                 this.mouse.screenX = e.clientX;
                 this.mouse.screenY = e.clientY;
 
-                const camX = this.player.x - this.canvas.width / 2;
-                const camY = this.player.y - this.canvas.height / 2;
-                this.mouse.worldX = camX + this.mouse.screenX;
-                this.mouse.worldY = camY + this.mouse.screenY;
+                const scale = this.camera ? this.camera.scale : 0.65;
+                const camX = this.camera ? this.camera.x : 1000;
+                const camY = this.camera ? this.camera.y : 1000;
+
+                this.mouse.worldX = (e.clientX - this.canvas.width / 2) / scale + camX;
+                this.mouse.worldY = (e.clientY - this.canvas.height / 2) / scale + camY;
 
                 this.updatePlacementCursor();
                 this.updateHoverTooltip(e);
@@ -2486,9 +2499,14 @@ class ReserveGame {
                     if (this.placementMode.active) {
                         this.tryPlaceBuilding();
                     } else {
-                        this.handleWorldClick();
+                        this.handleLeftClickSelection();
                     }
                 }
+            });
+
+            this.canvas.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                this.handleRightClickCommand();
             });
 
             window.addEventListener('mouseup', (e) => {
@@ -3014,6 +3032,101 @@ class ReserveGame {
                 }
             });
         }
+    }
+
+    handleLeftClickSelection() {
+        const mx = this.mouse.worldX;
+        const my = this.mouse.worldY;
+
+        // Check if clicked a Ranger
+        let foundRanger = null;
+        for (const r of this.rangers) {
+            const dist = Math.hypot(mx - r.x, my - r.y);
+            if (dist <= 25) {
+                foundRanger = r;
+                break;
+            }
+        }
+
+        if (foundRanger) {
+            this.selectedRanger = foundRanger;
+            this.showNotification(`Selected Ranger: ${foundRanger.name}`);
+            return;
+        }
+
+        // Check Placed Buildings / Blueprints
+        for (const b of this.state.placedBuildings) {
+            const halfW = b.width / 2;
+            const halfH = b.height / 2;
+            if (mx >= b.x - halfW && mx <= b.x + halfW &&
+                my >= b.y - halfH && my <= b.y + halfH) {
+                if (b.type === 'workbench') {
+                    this.openWorkbenchModal();
+                    return;
+                }
+                if (b.type === 'furnace') {
+                    const furnaceObj = this.furnaces.find(f => f.id === b.id);
+                    if (furnaceObj) this.openFurnaceModal(furnaceObj);
+                    return;
+                }
+                if (b.type === 'braai') {
+                    const braaiObj = this.braais.find(br => br.id === b.id);
+                    if (braaiObj) this.openBraaiModal(braaiObj);
+                    return;
+                }
+                if (b.type === 'dog_bowl') {
+                    const bowlObj = this.dogBowls.find(db => db.id === b.id);
+                    if (bowlObj) this.openDogBowlModal(bowlObj);
+                    return;
+                }
+                if (b.type === 'ranger_hut') {
+                    this.openRangerHutModal(b);
+                    return;
+                }
+            }
+        }
+
+        // Deselect if clicked empty ground
+        if (this.selectedRanger) {
+            this.selectedRanger = null;
+            this.showNotification('Deselected Ranger.');
+        }
+    }
+
+    handleRightClickCommand() {
+        if (!this.selectedRanger) {
+            this.showNotification('No Ranger selected. Left-click a Ranger first to issue commands.');
+            return;
+        }
+
+        const mx = this.mouse.worldX;
+        const my = this.mouse.worldY;
+
+        // Check if right clicked a resource node
+        const allNodes = this.chunkManager.getAllResourceNodes();
+        let targetNode = null;
+        for (const node of allNodes) {
+            const dist = Math.hypot(mx - node.x, my - node.y);
+            if (dist <= node.radius + 15) {
+                targetNode = node;
+                break;
+            }
+        }
+
+        if (targetNode) {
+            this.selectedRanger.state = 'gathering';
+            this.selectedRanger.targetX = targetNode.x;
+            this.selectedRanger.targetY = targetNode.y;
+            this.selectedRanger.targetNode = targetNode;
+            this.showNotification(`${this.selectedRanger.name} commanded to harvest ${targetNode.type}.`);
+            return;
+        }
+
+        // Default: Command Ranger to move to clicked coordinate
+        this.selectedRanger.state = 'moving';
+        this.selectedRanger.targetX = mx;
+        this.selectedRanger.targetY = my;
+        this.showNotification(`${this.selectedRanger.name} moving to target location.`);
     }
 
     showNotification(msg) {
@@ -4916,14 +5029,31 @@ class ReserveGame {
                 return;
             }
 
-            // Fog of War exploration tracking
-            const chunkX = Math.floor(this.player.x / 1000);
-            const chunkY = Math.floor(this.player.y / 1000);
+            // Overseer Camera WASD / Arrow Keys / Screen-Edge Movement
+            const camSpeed = this.camera ? this.camera.speed : 700;
+            if (this.keys.w || this.keys.ArrowUp || this.mouse.screenY < 20) {
+                this.camera.y -= camSpeed * dt;
+            }
+            if (this.keys.s || this.keys.ArrowDown || (this.canvas && this.mouse.screenY > this.canvas.height - 20)) {
+                this.camera.y += camSpeed * dt;
+            }
+            if (this.keys.a || this.keys.ArrowLeft || this.mouse.screenX < 20) {
+                this.camera.x -= camSpeed * dt;
+            }
+            if (this.keys.d || this.keys.ArrowRight || (this.canvas && this.mouse.screenX > this.canvas.width - 20)) {
+                this.camera.x += camSpeed * dt;
+            }
+
+            // Fog of War exploration tracking around camera
+            const chunkX = Math.floor(this.camera.x / 1000);
+            const chunkY = Math.floor(this.camera.y / 1000);
             this.revealedChunks.add(`${chunkX},${chunkY}`);
 
             const resourceNodes = this.chunkManager.getAllResourceNodes();
-            this.player.update(dt, this.keys, resourceNodes, this.state.placedBuildings, this.hq);
-            this.chunkManager.update(this.player.x, this.player.y, this.reserve, dt);
+            if (this.player) {
+                this.player.update(dt, {}, resourceNodes, this.state.placedBuildings, this.hq);
+            }
+            this.chunkManager.update(this.camera.x, this.camera.y, this.reserve, dt);
 
             // Hold-to-mine logic when tool equipped
             if (this.mouse.isDown) {
@@ -5658,19 +5788,20 @@ class ReserveGame {
 
         this.ctx.clearRect(0, 0, screenW, screenH);
 
-        const shake = this.player.getScreenShakeOffset();
-
-        const camX = this.player.x - screenW / 2 + shake.x;
-        const camY = this.player.y - screenH / 2 + shake.y;
+        const scale = this.camera ? this.camera.scale : 0.65;
+        const camX = this.camera ? this.camera.x : 1000;
+        const camY = this.camera ? this.camera.y : 1000;
 
         this.ctx.save();
+        this.ctx.translate(screenW / 2, screenH / 2);
+        this.ctx.scale(scale, scale);
         this.ctx.translate(-camX, -camY);
 
         const viewBounds = {
-            minX: camX - 100,
-            maxX: camX + screenW + 100,
-            minY: camY - 100,
-            maxY: camY + screenH + 100
+            minX: camX - (screenW / 2) / scale - 100,
+            maxX: camX + (screenW / 2) / scale + 100,
+            minY: camY - (screenH / 2) / scale - 100,
+            maxY: camY + (screenH / 2) / scale + 100
         };
 
         // 1. Savannah Biome Background
