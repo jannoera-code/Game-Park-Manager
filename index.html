@@ -144,6 +144,42 @@
         </div>
     </div>
 
+    <!-- Worker Management Modal -->
+    <div id="worker-management-modal" class="modal-backdrop hidden">
+        <div class="modal-card" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3>🤠 Worker Management</h3>
+                <button id="close-worker-modal-btn" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px;">
+                <div style="text-align: center;">
+                    <h4 id="worker-modal-name" style="color: var(--accent-gold); font-size: 1.2rem;">Worker Name</h4>
+                    <p id="worker-modal-status" style="font-size: 0.85rem; color: var(--text-muted);">Status: Idle</p>
+                </div>
+                <div class="accommodation-section">
+                    <label style="font-weight: bold; color: var(--accent-gold); display: block; margin-bottom: 6px;">🏠 Assign Housing:</label>
+                    <select id="worker-housing-select" style="width: 100%; padding: 8px; border-radius: 6px; background: #1a252c; color: var(--text-main); border: 1px solid var(--border-color);"></select>
+                </div>
+                <div class="accommodation-section">
+                    <label style="font-weight: bold; color: var(--accent-gold); display: block; margin-bottom: 6px;">💼 Assign Job:</label>
+                    <select id="worker-job-select" style="width: 100%; padding: 8px; border-radius: 6px; background: #1a252c; color: var(--text-main); border: 1px solid var(--border-color);">
+                        <option value="">-- No Job --</option>
+                        <option value="Forager">Forager (Loots Crates & Diseased Corpses)</option>
+                        <option value="Cook">Cook (Cooks Raw Meat at Braai)</option>
+                        <option value="Gatherer">Gatherer (Harvests Trees & Rocks)</option>
+                    </select>
+                </div>
+                <div class="accommodation-section">
+                    <label style="font-weight: bold; color: var(--accent-gold); display: block; margin-bottom: 6px;">✨ Assign Permanent Buff:</label>
+                    <select id="worker-buff-select" style="width: 100%; padding: 8px; border-radius: 6px; background: #1a252c; color: var(--text-main); border: 1px solid var(--border-color);"></select>
+                </div>
+                <button id="save-worker-assignment-btn" class="action-btn positive-btn" style="padding: 10px; font-size: 1rem; margin-top: 6px;">
+                    💾 Save Assignment
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Ranger Hut Assignment Modal -->
     <div id="ranger-hut-modal" class="modal-backdrop hidden">
         <div class="modal-card" style="max-width: 550px;">

@@ -621,6 +621,48 @@ class PlantedSapling {
 }
 
 /**
+ * Diseased Corpse Entity Class
+ * Spawned randomly across the savanna, contains Raw Meat.
+ */
+class DiseasedCorpse {
+    constructor(id, x, y) {
+        this.id = id;
+        this.x = x;
+        this.y = y;
+        this.radius = 20;
+        this.looted = false;
+        this.rawMeatCount = Math.floor(2 + Math.random() * 4); // 2-5 raw meat
+    }
+
+    render(ctx, images) {
+        if (this.looted) return;
+
+        ctx.save();
+        ctx.translate(this.x, this.y);
+
+        // Shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+        ctx.beginPath();
+        ctx.ellipse(2, 12, 18, 7, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Corpse shape / icon
+        ctx.fillStyle = '#4a3728';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 16, 10, 0.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#e74c3c';
+        ctx.font = 'bold 16px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('☠️', 0, -2);
+
+        ctx.restore();
+    }
+}
+
+/**
  * DroppedItem Entity Class
  * Physical Entity item spawned on the ground with bounce physics when resource nodes are harvested.
  */
@@ -899,6 +941,7 @@ class Chunk {
         this.worldY = chunkY * chunkSize;
         this.resourceNodes = [];
         this.crates = [];
+        this.diseasedCorpses = [];
 
         this.generate(reserveBounds);
     }
@@ -940,6 +983,16 @@ class Chunk {
                 this.crates.push(new Crate(crateId, crateX, crateY));
             }
         }
+
+        // Rare chance (20% per chunk) to spawn a Diseased Corpse
+        if (seededRandom(localSeed++) < 0.20) {
+            const corpseX = this.worldX + seededRandom(localSeed++) * (this.chunkSize - 120) + 60;
+            const corpseY = this.worldY + seededRandom(localSeed++) * (this.chunkSize - 120) + 60;
+            if (!isInsideReserve(corpseX, corpseY, 30)) {
+                const corpseId = `corpse_${this.chunkX}_${this.chunkY}`;
+                this.diseasedCorpses.push(new DiseasedCorpse(corpseId, corpseX, corpseY));
+            }
+        }
     }
 
     update(dt) {
@@ -966,6 +1019,17 @@ class Chunk {
                 crate.y - crate.radius <= viewBounds.maxY
             ) {
                 crate.render(ctx, images);
+            }
+        });
+
+        this.diseasedCorpses.forEach(corpse => {
+            if (
+                corpse.x + corpse.radius >= viewBounds.minX &&
+                corpse.x - corpse.radius <= viewBounds.maxX &&
+                corpse.y + corpse.radius >= viewBounds.minY &&
+                corpse.y - corpse.radius <= viewBounds.maxY
+            ) {
+                corpse.render(ctx, images);
             }
         });
     }
@@ -1027,6 +1091,14 @@ class ChunkManager {
             crates.push(...chunk.crates);
         }
         return crates;
+    }
+
+    getAllDiseasedCorpses() {
+        const corpses = [];
+        for (const chunk of this.loadedChunks.values()) {
+            corpses.push(...chunk.diseasedCorpses);
+        }
+        return corpses;
     }
 
     removeResourceNode(nodeId) {
@@ -1826,6 +1898,40 @@ class Animal {
 }
 
 /**
+ * Camp Chest Class
+ * Shared resource container located next to Reserve HQ.
+ */
+class CampChest {
+    constructor(id, x, y, width = 44, height = 44) {
+        this.id = id;
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+        this.radius = 22;
+        this.inventory = new Inventory(20, 100);
+    }
+
+    render(ctx, images) {
+        const chestImg = images ? images['old-ranger-chest.png'] : null;
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath();
+        ctx.ellipse(0, 14, 16, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (chestImg && chestImg.complete) {
+            ctx.drawImage(chestImg, -this.width / 2, -this.height / 2, this.width, this.height);
+        } else {
+            ctx.fillStyle = '#8e44ad';
+            ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
+        }
+        ctx.restore();
+    }
+}
+
+/**
  * Living Ecosystem: Ranger Class with AI State Machine & Traits
  * Autonomous Tasks: Patrolling, Refilling Waterhole, Maintaining Fences.
  */
@@ -1842,6 +1948,11 @@ class Ranger {
         this.traits = data.traits || [];
         this.image = data.image || 'ranger1.png';
 
+        this.assignedBuilding = data.assignedBuilding || null;
+        this.job = data.job || null; // 'Gatherer', 'Forager', 'Cook'
+        this.buff = data.buff || null;
+        this.carryInventory = new Inventory(5, 50);
+
         this.hp = 100;
         this.maxHp = 100;
         this.hunger = 85 + Math.random() * 15;
@@ -1849,18 +1960,22 @@ class Ranger {
         this.thirst = 85 + Math.random() * 15;
         this.maxThirst = 100;
 
-        // Apply Trait Modifiers
+        // Apply Trait & Buff Modifiers
         let speedMult = 1.0;
         let workMult = 1.0;
         this.traits.forEach(t => {
             if (t.effects && t.effects.moveSpeedMult) speedMult *= t.effects.moveSpeedMult;
             if (t.effects && t.effects.workSpeedMult) workMult *= t.effects.workSpeedMult;
         });
+        if (this.buff && this.buff.effect) {
+            if (this.buff.effect.moveSpeedMult) speedMult *= this.buff.effect.moveSpeedMult;
+            if (this.buff.effect.workSpeedMult) workMult *= this.buff.effect.workSpeedMult;
+        }
 
         this.baseSpeed = 45 * speedMult;
         this.workSpeedMult = workMult;
 
-        this.state = 'patrolling'; // 'patrolling', 'refilling_water', 'maintaining_fences'
+        this.state = 'patrolling'; // 'patrolling', 'refilling_water', 'maintaining_fences', 'seeking_water', 'drinking'
         this.targetX = this.x;
         this.targetY = this.y;
         this.taskTimer = 0;
@@ -1882,11 +1997,45 @@ class Ranger {
         ];
     }
 
-    update(dt, waterhole) {
+    update(dt, waterhole, gameInstance = null) {
+        // Universal Thirst AI Decay
+        this.thirst = Math.max(0, this.thirst - dt * 0.8);
+
+        // Check Thirst Threshold
+        if (this.thirst < 30 && this.state !== 'seeking_water' && this.state !== 'drinking') {
+            this.savedStateBeforeThirst = this.state;
+            this.state = 'seeking_water';
+        }
+
+        if (this.state === 'seeking_water') {
+            const dist = Math.hypot(waterhole.x - this.x, waterhole.y - this.y);
+            if (dist < waterhole.radiusY + 30) {
+                this.state = 'drinking';
+            } else {
+                this.moveTowards(waterhole.x, waterhole.y, dt);
+            }
+            return;
+        }
+
+        if (this.state === 'drinking') {
+            this.thirst = Math.min(100, this.thirst + dt * 35);
+            if (this.thirst >= 100) {
+                this.state = this.savedStateBeforeThirst || 'patrolling';
+                this.savedStateBeforeThirst = null;
+            }
+            return;
+        }
+
+        // Job Routines execution if gameInstance is available
+        if (gameInstance && this.job) {
+            this.updateJobRoutine(dt, gameInstance);
+            return;
+        }
+
+        // Default Patrolling / Refilling / Maintenance behavior
         if (this.state === 'patrolling') {
             const dist = Math.hypot(this.targetX - this.x, this.targetY - this.y);
             if (dist < 15) {
-                // Decide next task: 30% check waterhole, 30% check fences, 40% patrol
                 const rand = Math.random();
                 if (waterhole.waterLevel < 60 && rand < 0.4) {
                     this.state = 'refilling_water';
@@ -1894,7 +2043,6 @@ class Ranger {
                     this.state = 'maintaining_fences';
                     this.fenceWaypointIndex = Math.floor(Math.random() * 4);
                 } else {
-                    // Pick patrol target near hut
                     const angle = Math.random() * Math.PI * 2;
                     const r = Math.random() * 140;
                     this.targetX = this.hutX + Math.cos(angle) * r;
@@ -1935,6 +2083,295 @@ class Ranger {
                 this.moveTowards(wp.x, wp.y, dt);
             }
         }
+    }
+
+    updateJobRoutine(dt, gameInstance) {
+        if (this.job === 'Gatherer') {
+            this.runGathererRoutine(dt, gameInstance);
+        } else if (this.job === 'Forager') {
+            this.runForagerRoutine(dt, gameInstance);
+        } else if (this.job === 'Cook') {
+            this.runCookRoutine(dt, gameInstance);
+        }
+    }
+
+    runGathererRoutine(dt, gameInstance) {
+        const campChest = gameInstance.campChest;
+        // Check if carry inventory is full or has resources to deposit
+        const carryTotal = this.carryInventory.slots.reduce((sum, s) => sum + s.count, 0);
+
+        if (carryTotal >= 20 || (this.targetNode === null && carryTotal > 0)) {
+            // Pathfind to Camp Chest to deposit
+            const dist = Math.hypot(campChest.x - this.x, campChest.y - this.y);
+            if (dist < campChest.radius + 20) {
+                // Deposit resources into Camp Chest
+                this.carryInventory.slots.forEach(slot => {
+                    if (slot.type && slot.count > 0) {
+                        campChest.inventory.addItem(slot.type, slot.count, slot.name);
+                        slot.type = null;
+                        slot.count = 0;
+                        slot.name = null;
+                    }
+                });
+                gameInstance.addFloatingText('📦 Deposited Resources!', campChest.x, campChest.y - 20, '#2ecc71');
+                this.targetNode = null;
+            } else {
+                this.moveTowards(campChest.x, campChest.y, dt);
+            }
+            return;
+        }
+
+        // Find nearest Wood tree or Stone rock node
+        if (!this.targetNode || this.targetNode.hp <= 0) {
+            const nodes = gameInstance.chunkManager.getAllResourceNodes();
+            let nearest = null;
+            let minDist = Infinity;
+            nodes.forEach(n => {
+                if (n.hp > 0) {
+                    const d = Math.hypot(n.x - this.x, n.y - this.y);
+                    if (d < minDist) {
+                        minDist = d;
+                        nearest = n;
+                    }
+                }
+            });
+            this.targetNode = nearest;
+        }
+
+        if (this.targetNode) {
+            const dist = Math.hypot(this.targetNode.x - this.x, this.targetNode.y - this.y);
+            if (dist < this.targetNode.radius + 20) {
+                this.taskTimer += dt * this.workSpeedMult;
+                if (this.taskTimer >= 1.0) {
+                    this.taskTimer = 0;
+                    this.targetNode.hp -= 2;
+                    const resType = this.targetNode.type; // 'wood' or 'stone'
+                    const resName = resType === 'wood' ? 'Wood' : 'Stone';
+                    this.carryInventory.addItem(resType, 2, resName);
+                    gameInstance.addFloatingText(`+2 ${resName}`, this.x, this.y - 15, '#f1c40f');
+
+                    if (this.targetNode.hp <= 0) {
+                        gameInstance.chunkManager.removeResourceNode(this.targetNode.id);
+                        this.targetNode = null;
+                    }
+                }
+            } else {
+                this.moveTowards(this.targetNode.x, this.targetNode.y, dt);
+            }
+        } else {
+            // Idle near Camp Chest if no resource nodes exist
+            this.moveTowards(campChest.x + 30, campChest.y + 30, dt);
+        }
+    }
+
+    runForagerRoutine(dt, gameInstance) {
+        const campChest = gameInstance.campChest;
+        const carryTotal = this.carryInventory.slots.reduce((sum, s) => sum + s.count, 0);
+
+        if (carryTotal >= 15 || (this.targetForage === null && carryTotal > 0)) {
+            // Return to Camp Chest to deposit
+            const dist = Math.hypot(campChest.x - this.x, campChest.y - this.y);
+            if (dist < campChest.radius + 20) {
+                this.carryInventory.slots.forEach(slot => {
+                    if (slot.type && slot.count > 0) {
+                        campChest.inventory.addItem(slot.type, slot.count, slot.name);
+                        slot.type = null;
+                        slot.count = 0;
+                        slot.name = null;
+                    }
+                });
+                gameInstance.addFloatingText('📦 Loot Deposited!', campChest.x, campChest.y - 20, '#e67e22');
+                this.targetForage = null;
+            } else {
+                this.moveTowards(campChest.x, campChest.y, dt);
+            }
+            return;
+        }
+
+        // Find nearest Crates or Diseased Corpses
+        if (!this.targetForage || this.targetForage.looted) {
+            const crates = gameInstance.chunkManager.getAllCrates().filter(c => !c.looted);
+            const corpses = gameInstance.chunkManager.getAllDiseasedCorpses().filter(dc => !dc.looted);
+            const targets = [...crates, ...corpses];
+
+            let nearest = null;
+            let minDist = Infinity;
+            targets.forEach(t => {
+                const d = Math.hypot(t.x - this.x, t.y - this.y);
+                if (d < minDist) {
+                    minDist = d;
+                    nearest = t;
+                }
+            });
+            this.targetForage = nearest;
+        }
+
+        if (this.targetForage) {
+            const dist = Math.hypot(this.targetForage.x - this.x, this.targetForage.y - this.y);
+            if (dist < (this.targetForage.radius || 20) + 20) {
+                this.taskTimer += dt * this.workSpeedMult;
+                if (this.taskTimer >= 1.5) {
+                    this.taskTimer = 0;
+                    this.targetForage.looted = true;
+                    if (this.targetForage instanceof DiseasedCorpse) {
+                        const meatCount = this.targetForage.rawMeatCount || 3;
+                        this.carryInventory.addItem('raw_meat', meatCount, 'Raw Meat');
+                        gameInstance.addFloatingText(`🥩 Scavenged +${meatCount} Raw Meat!`, this.x, this.y - 15, '#e74c3c');
+                    } else if (this.targetForage instanceof Crate) {
+                        const meatCount = Math.floor(2 + Math.random() * 3);
+                        this.carryInventory.addItem('raw_meat', meatCount, 'Raw Meat');
+                        gameInstance.addFloatingText(`📦 Looted Crate +${meatCount} Raw Meat!`, this.x, this.y - 15, '#f39c12');
+                    }
+                    this.targetForage = null;
+                }
+            } else {
+                this.moveTowards(this.targetForage.x, this.targetForage.y, dt);
+            }
+        } else {
+            // Idle near Camp Chest
+            this.moveTowards(campChest.x - 30, campChest.y + 30, dt);
+        }
+    }
+
+    runCookRoutine(dt, gameInstance) {
+        const campChest = gameInstance.campChest;
+        const braais = gameInstance.braais || [];
+        const targetBraai = braais.length > 0 ? braais[0] : null;
+
+        if (!targetBraai) {
+            // Idle near HQ if no Braai built yet
+            this.moveTowards(campChest.x + 40, campChest.y, dt);
+            return;
+        }
+
+        // Check if Braai needs wood fuel
+        if (targetBraai.braaiWood <= 2) {
+            // Check Camp Chest for braai_wood or wood
+            const braaiWoodInChest = campChest.inventory.getItemCount('braai_wood');
+            const woodInChest = campChest.inventory.getItemCount('wood');
+
+            if (braaiWoodInChest > 0) {
+                // Fetch braai_wood from Camp Chest
+                const distChest = Math.hypot(campChest.x - this.x, campChest.y - this.y);
+                if (distChest < campChest.radius + 20) {
+                    const taken = Math.min(5, braaiWoodInChest);
+                    campChest.inventory.consumeItem('braai_wood', taken);
+                    this.carryInventory.addItem('braai_wood', taken, 'Braai Wood');
+                } else {
+                    this.moveTowards(campChest.x, campChest.y, dt);
+                    return;
+                }
+            } else if (woodInChest > 0) {
+                // Look for or auto-build Wood Chopping Station
+                let choppingStation = gameInstance.state.placedBuildings.find(b => b.type === 'wood_chopping_station');
+                if (!choppingStation) {
+                    // Auto-build Wood Chopping Station near HQ
+                    const stationX = gameInstance.hq.x - 60;
+                    const stationY = gameInstance.hq.y + 60;
+                    choppingStation = {
+                        id: `building_station_${Date.now()}`,
+                        type: 'wood_chopping_station',
+                        x: stationX,
+                        y: stationY,
+                        width: 70,
+                        height: 70,
+                        rotation: 0
+                    };
+                    gameInstance.state.placedBuildings.push(choppingStation);
+                    gameInstance.addFloatingText('🪓 Auto-built Wood Chopping Station!', stationX, stationY - 20, '#f1c40f');
+                }
+
+                // Carry wood to Chopping Station to craft Braai Wood
+                if (this.carryInventory.getItemCount('wood') === 0 && this.carryInventory.getItemCount('braai_wood') === 0) {
+                    const distChest = Math.hypot(campChest.x - this.x, campChest.y - this.y);
+                    if (distChest < campChest.radius + 20) {
+                        const taken = Math.min(5, woodInChest);
+                        campChest.inventory.consumeItem('wood', taken);
+                        this.carryInventory.addItem('wood', taken, 'Wood');
+                    } else {
+                        this.moveTowards(campChest.x, campChest.y, dt);
+                        return;
+                    }
+                }
+
+                if (this.carryInventory.getItemCount('wood') > 0) {
+                    const distStation = Math.hypot(choppingStation.x - this.x, choppingStation.y - this.y);
+                    if (distStation < 40) {
+                        this.taskTimer += dt * this.workSpeedMult;
+                        if (this.taskTimer >= 1.0) {
+                            this.taskTimer = 0;
+                            const count = this.carryInventory.getItemCount('wood');
+                            this.carryInventory.consumeItem('wood', count);
+                            this.carryInventory.addItem('braai_wood', count, 'Braai Wood');
+                            gameInstance.addFloatingText('🪓 Crafted Braai Wood!', choppingStation.x, choppingStation.y - 20, '#f1c40f');
+                        }
+                    } else {
+                        this.moveTowards(choppingStation.x, choppingStation.y, dt);
+                    }
+                    return;
+                }
+            }
+        }
+
+        // Deliver carried Braai Wood fuel to Braai if holding any
+        const carriedFuel = this.carryInventory.getItemCount('braai_wood');
+        if (carriedFuel > 0) {
+            const distBraai = Math.hypot(targetBraai.x - this.x, targetBraai.y - this.y);
+            if (distBraai < 45) {
+                targetBraai.addFuel(carriedFuel);
+                this.carryInventory.consumeItem('braai_wood', carriedFuel);
+                gameInstance.addFloatingText('🔥 Added Braai Fuel!', targetBraai.x, targetBraai.y - 20, '#e67e22');
+            } else {
+                this.moveTowards(targetBraai.x, targetBraai.y, dt);
+            }
+            return;
+        }
+
+        // Fetch Raw Meat from Camp Chest if Braai needs raw meat
+        const rawMeatInChest = campChest.inventory.getItemCount('raw_meat');
+        const carriedMeat = this.carryInventory.getItemCount('raw_meat');
+
+        if (carriedMeat === 0 && rawMeatInChest > 0 && targetBraai.rawMeat < 5) {
+            const distChest = Math.hypot(campChest.x - this.x, campChest.y - this.y);
+            if (distChest < campChest.radius + 20) {
+                const taken = Math.min(5, rawMeatInChest);
+                campChest.inventory.consumeItem('raw_meat', taken);
+                this.carryInventory.addItem('raw_meat', taken, 'Raw Meat');
+            } else {
+                this.moveTowards(campChest.x, campChest.y, dt);
+            }
+            return;
+        }
+
+        // Deliver carried Raw Meat to Braai
+        if (carriedMeat > 0) {
+            const distBraai = Math.hypot(targetBraai.x - this.x, targetBraai.y - this.y);
+            if (distBraai < 45) {
+                targetBraai.addMeat(carriedMeat);
+                this.carryInventory.consumeItem('raw_meat', carriedMeat);
+                gameInstance.addFloatingText('🥩 Loaded Meat into Braai!', targetBraai.x, targetBraai.y - 20, '#e74c3c');
+            } else {
+                this.moveTowards(targetBraai.x, targetBraai.y, dt);
+            }
+            return;
+        }
+
+        // Collect Cooked Meat from Braai and deposit into Camp Chest
+        if (targetBraai.cookedMeat > 0) {
+            const distBraai = Math.hypot(targetBraai.x - this.x, targetBraai.y - this.y);
+            if (distBraai < 45) {
+                const collected = targetBraai.collectOutput();
+                campChest.inventory.addItem('cooked_meat', collected, 'Cooked Meat');
+                gameInstance.addFloatingText(`🍖 Collected +${collected} Cooked Meat to Chest!`, targetBraai.x, targetBraai.y - 20, '#2ecc71');
+                gameInstance.recordTutorialEvent('cookedFood');
+            } else {
+                this.moveTowards(targetBraai.x, targetBraai.y, dt);
+            }
+            return;
+        }
+
+        // Default: Stand near Braai
+        this.moveTowards(targetBraai.x + 30, targetBraai.y + 30, dt);
     }
 
     moveTowards(tx, ty, dt) {
@@ -1982,7 +2419,23 @@ class Ranger {
         }
 
         // Task badge
-        if (this.state === 'refilling_water') {
+        if (this.state === 'seeking_water' || this.state === 'drinking') {
+            ctx.fillStyle = '#3498db';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillText('💧', 0, -22);
+        } else if (this.job === 'Gatherer') {
+            ctx.fillStyle = '#f1c40f';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillText('🪓', 0, -22);
+        } else if (this.job === 'Forager') {
+            ctx.fillStyle = '#e67e22';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillText('🎒', 0, -22);
+        } else if (this.job === 'Cook') {
+            ctx.fillStyle = '#e74c3c';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillText('🥩', 0, -22);
+        } else if (this.state === 'refilling_water') {
             ctx.fillStyle = '#f39c12';
             ctx.font = 'bold 12px sans-serif';
             ctx.fillText('🪣', 0, -22);
@@ -2198,6 +2651,7 @@ class ReserveGame {
         // Reserve Fixed Coordinate Zone
         this.reserve = { x: 500, y: 500, width: 1000, height: 1000 };
         this.hq = { x: this.reserve.x + 172, y: this.reserve.y + 172, width: 144, height: 144 };
+        this.campChest = new CampChest('camp_chest_init', this.hq.x + this.hq.width + 30, this.hq.y + 72);
         this.activeRangerHut = null;
         this.gridSize = 20;
 
@@ -2862,6 +3316,11 @@ class ReserveGame {
             startDayBtn.addEventListener('click', () => this.startNewDayFromRecap());
         }
 
+        const closeWorkerModalBtn = document.getElementById('close-worker-modal-btn');
+        if (closeWorkerModalBtn) {
+            closeWorkerModalBtn.addEventListener('click', () => this.closeWorkerManagementModal());
+        }
+
         const closeRangerHutBtn = document.getElementById('close-ranger-hut-btn');
         if (closeRangerHutBtn) {
             closeRangerHutBtn.addEventListener('click', () => this.closeRangerHutModal());
@@ -3050,7 +3509,7 @@ class ReserveGame {
 
         if (foundRanger) {
             this.selectedRanger = foundRanger;
-            this.showNotification(`Selected Ranger: ${foundRanger.name}`);
+            this.openWorkerManagementModal(foundRanger);
             return;
         }
 
@@ -4078,6 +4537,115 @@ class ReserveGame {
         this.showNotification(`Day ${this.state.day} started!`);
     }
 
+    openWorkerManagementModal(rangerEntity) {
+        this.player.isMovementLocked = true;
+        const modal = document.getElementById('worker-management-modal');
+        if (!modal) return;
+
+        const hiredData = this.state.hiredRangers.find(r => r.id === rangerEntity.id);
+        if (!hiredData) return;
+
+        const nameEl = document.getElementById('worker-modal-name');
+        const statusEl = document.getElementById('worker-modal-status');
+        const housingSelect = document.getElementById('worker-housing-select');
+        const jobSelect = document.getElementById('worker-job-select');
+        const buffSelect = document.getElementById('worker-buff-select');
+
+        if (nameEl) nameEl.textContent = hiredData.name;
+        if (statusEl) statusEl.textContent = `Status: ${rangerEntity.state} | Job: ${hiredData.job || 'None'}`;
+
+        // Populate Housing Options
+        if (housingSelect) {
+            housingSelect.innerHTML = '';
+            // HQ Option
+            const hqCount = this.state.hiredRangers.filter(r => r.assignedBuilding === 'reserve_hq').length;
+            const hqAvailable = hqCount < 2 || hiredData.assignedBuilding === 'reserve_hq';
+            const hqOpt = document.createElement('option');
+            hqOpt.value = 'reserve_hq';
+            hqOpt.textContent = `Reserve HQ (${hqCount}/2 capacity)`;
+            if (!hqAvailable) hqOpt.disabled = true;
+            housingSelect.appendChild(hqOpt);
+
+            // Ranger Huts Options
+            const huts = this.state.placedBuildings.filter(b => b.type === 'ranger_hut');
+            huts.forEach((hut, idx) => {
+                const hutCount = this.state.hiredRangers.filter(r => r.assignedBuilding === hut.id).length;
+                const hutAvailable = hutCount < 2 || hiredData.assignedBuilding === hut.id;
+                const opt = document.createElement('option');
+                opt.value = hut.id;
+                opt.textContent = `Ranger Hut #${idx + 1} (${hutCount}/2 capacity)`;
+                if (!hutAvailable) opt.disabled = true;
+                housingSelect.appendChild(opt);
+            });
+
+            housingSelect.value = hiredData.assignedBuilding || 'reserve_hq';
+        }
+
+        // Job Option
+        if (jobSelect) {
+            jobSelect.value = hiredData.job || '';
+        }
+
+        // Buff Options
+        if (buffSelect) {
+            buffSelect.innerHTML = '';
+            const noBuffOpt = document.createElement('option');
+            noBuffOpt.value = '';
+            noBuffOpt.textContent = '-- Select Permanent Buff --';
+            buffSelect.appendChild(noBuffOpt);
+
+            if (typeof WORKER_BUFF_OPTIONS !== 'undefined') {
+                WORKER_BUFF_OPTIONS.forEach(b => {
+                    const opt = document.createElement('option');
+                    opt.value = b.id;
+                    opt.textContent = `${b.title} (${b.description})`;
+                    buffSelect.appendChild(opt);
+                });
+            }
+
+            buffSelect.value = hiredData.buff ? hiredData.buff.id : '';
+            if (hiredData.buff) {
+                buffSelect.disabled = true; // Permanent once selected
+            } else {
+                buffSelect.disabled = false;
+            }
+        }
+
+        modal.classList.remove('hidden');
+
+        // Save Button Handler
+        const saveBtn = document.getElementById('save-worker-assignment-btn');
+        if (saveBtn) {
+            saveBtn.onclick = () => {
+                const chosenHousing = housingSelect ? housingSelect.value : null;
+                const chosenJob = jobSelect ? jobSelect.value : null;
+                const chosenBuffId = buffSelect ? buffSelect.value : null;
+
+                hiredData.assignedBuilding = chosenHousing;
+                hiredData.job = chosenJob;
+
+                if (chosenBuffId && !hiredData.buff) {
+                    const buffDef = WORKER_BUFF_OPTIONS.find(b => b.id === chosenBuffId);
+                    if (buffDef) {
+                        hiredData.buff = buffDef;
+                    }
+                }
+
+                this.syncRangersWithInfrastructure();
+                this.recordTutorialEvent('assignedWorkerJob');
+                this.showNotification(`Updated assignment for ${hiredData.name}!`);
+                this.closeWorkerManagementModal();
+                this.updateUI();
+            };
+        }
+    }
+
+    closeWorkerManagementModal() {
+        const modal = document.getElementById('worker-management-modal');
+        if (modal) modal.classList.add('hidden');
+        this.player.isMovementLocked = false;
+    }
+
     openRangerHutModal(hutBuilding) {
         this.player.isMovementLocked = true;
         this.activeRangerHut = hutBuilding;
@@ -4804,41 +5372,44 @@ class ReserveGame {
     // Infrastructure & Housing Warning Checks
     syncRangersWithInfrastructure() {
         const rangerHuts = this.state.placedBuildings.filter(b => b.type === 'ranger_hut');
-        const maxCapacity = rangerHuts.length * 2; // 2 Rangers per Hut
-        const hiredCount = this.state.hiredRangers.length;
+        const unhousedWorkers = this.state.hiredRangers.filter(r => !r.assignedBuilding);
 
         // Housing Warning Badge Logic
         const warningBadge = document.getElementById('housing-warning-badge');
         const warningText = document.getElementById('housing-warning-text');
 
-        if (hiredCount > maxCapacity) {
+        if (unhousedWorkers.length > 0) {
             if (warningBadge) warningBadge.classList.remove('hidden');
-            if (warningText) warningText.textContent = `Staff Unhoused (${hiredCount} staff / ${maxCapacity} capacity)`;
+            if (warningText) warningText.textContent = `Staff Unhoused (${unhousedWorkers.length} workers unassigned)`;
         } else {
             if (warningBadge) warningBadge.classList.add('hidden');
         }
 
-        if (rangerHuts.length === 0) {
-            this.rangers = [];
-            return;
-        }
+        const existingMap = new Map();
+        (this.rangers || []).forEach(r => existingMap.set(r.id, r));
 
         this.rangers = [];
-        this.state.hiredRangers.forEach((hired, index) => {
-            // Find assigned hut if any
-            let targetHut = rangerHuts.find(b => b.assignedRangerIds?.includes(hired.id));
-            if (!targetHut && index < maxCapacity) {
-                targetHut = rangerHuts[Math.floor(index / 2)];
+        this.state.hiredRangers.forEach(hired => {
+            let spawnX = this.hq.x + 72;
+            let spawnY = this.hq.y + 72;
+            if (hired.assignedBuilding && hired.assignedBuilding.startsWith('hut_')) {
+                const hut = rangerHuts.find(b => b.id === hired.assignedBuilding);
+                if (hut) {
+                    spawnX = hut.x;
+                    spawnY = hut.y;
+                }
             }
-
-            if (targetHut) {
-                this.rangers.push(new Ranger(
-                    hired,
-                    targetHut.x,
-                    targetHut.y,
-                    this.reserve
-                ));
+            let ranger = existingMap.get(hired.id);
+            if (ranger) {
+                ranger.assignedBuilding = hired.assignedBuilding;
+                ranger.job = hired.job;
+                ranger.buff = hired.buff;
+                ranger.hutX = spawnX;
+                ranger.hutY = spawnY;
+            } else {
+                ranger = new Ranger(hired, spawnX, spawnY, this.reserve);
             }
+            this.rangers.push(ranger);
         });
     }
 
@@ -5083,7 +5654,7 @@ class ReserveGame {
                 }
             }
 
-            this.rangers.forEach(r => r.update(dt, this.waterhole));
+            this.rangers.forEach(r => r.update(dt, this.waterhole, this));
             this.updateDroppedItems(dt);
             this.updatePlantedSaplings(dt);
             this.updateFloatingTexts(dt);
@@ -5826,6 +6397,11 @@ class ReserveGame {
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
             this.ctx.fillText(`RESERVE HQ T${this.state.campTier}`, this.hq.x + this.hq.width / 2, this.hq.y + this.hq.height / 2);
+        }
+
+        // Camp Chest next to Reserve HQ
+        if (this.campChest) {
+            this.campChest.render(this.ctx, this.images);
         }
 
         // Dog Jock
