@@ -970,6 +970,7 @@ class Player {
         this.facingLeft = false;
         this.screenShakeTimer = 0;
         this.screenShakeIntensity = 0;
+        this.isMovementLocked = false;
 
         // Player Survival Stats
         this.hp = 100;
@@ -1001,12 +1002,28 @@ class Player {
         return { x: 0, y: 0 };
     }
 
-    checkCollision(px, py, resourceNodes, placedBuildings) {
+    checkCollision(px, py, resourceNodes, placedBuildings, hqBounds = null) {
         const r = this.radius;
 
         for (const node of resourceNodes) {
             const dist = Math.hypot(px - node.x, py - node.y);
             if (dist < r + node.radius * 0.7) return true;
+        }
+
+        if (hqBounds) {
+            const hx1 = hqBounds.x;
+            const hx2 = hqBounds.x + hqBounds.width;
+            const hy1 = hqBounds.y;
+            const hy2 = hqBounds.y + hqBounds.height;
+
+            const closestHqX = Math.max(hx1, Math.min(px, hx2));
+            const closestHqY = Math.max(hy1, Math.min(py, hy2));
+            const distHqX = px - closestHqX;
+            const distHqY = py - closestHqY;
+
+            if ((distHqX * distHqX + distHqY * distHqY) < r * r) {
+                return true;
+            }
         }
 
         for (const b of placedBuildings) {
@@ -1028,7 +1045,7 @@ class Player {
         return false;
     }
 
-    update(dt, keys, resourceNodes, placedBuildings) {
+    update(dt, keys, resourceNodes, placedBuildings, hqBounds = null) {
         if (this.screenShakeTimer > 0) {
             this.screenShakeTimer = Math.max(0, this.screenShakeTimer - dt);
         }
@@ -1039,6 +1056,12 @@ class Player {
 
         if (this.thirst <= 0 || this.hunger <= 0) {
             this.hp = Math.max(0, this.hp - this.starveHpDepleteRate * dt);
+        }
+
+        if (this.isMovementLocked) {
+            this.bobY += (0 - this.bobY) * Math.min(1, dt * 10);
+            this.wobbleAngle += (0 - this.wobbleAngle) * Math.min(1, dt * 10);
+            return;
         }
 
         let dx = 0;
@@ -1059,14 +1082,14 @@ class Player {
 
         if (moveX !== 0) {
             const newX = this.x + moveX;
-            if (!this.checkCollision(newX, this.y, resourceNodes, placedBuildings)) {
+            if (!this.checkCollision(newX, this.y, resourceNodes, placedBuildings, hqBounds)) {
                 this.x = newX;
             }
         }
 
         if (moveY !== 0) {
             const newY = this.y + moveY;
-            if (!this.checkCollision(this.x, newY, resourceNodes, placedBuildings)) {
+            if (!this.checkCollision(this.x, newY, resourceNodes, placedBuildings, hqBounds)) {
                 this.y = newY;
             }
         }
@@ -1772,6 +1795,9 @@ class ReserveGame {
 
         // Reserve Fixed Coordinate Zone
         this.reserve = { x: 500, y: 500, width: 1000, height: 1000 };
+        this.hq = { x: this.reserve.x + 172, y: this.reserve.y + 172, width: 144, height: 144 };
+        this.isPlayerAssignedToHQ = false;
+        this.activeRangerHut = null;
         this.gridSize = 20;
 
         // Fog of War & Minimap Systems
@@ -1796,7 +1822,7 @@ class ReserveGame {
         this.chunkManager = new ChunkManager(1000, 2);
         this.player = new Player(250, 250);
         this.waterhole = new Waterhole(this.reserve.x + 500, this.reserve.y + 500);
-        this.dogJock = new DogJock(this.reserve.x + 150, this.reserve.y + 135);
+        this.dogJock = new DogJock(this.hq.x + 72, this.hq.y + 72);
 
         this.droppedItems = [];
         this.plantedSaplings = [];
@@ -1822,6 +1848,8 @@ class ReserveGame {
         this.activeFurnace = null;
         this.activeBraai = null;
         this.activeCrate = null;
+
+        this.dayBaseline = null;
 
         // Initial Seed Resources into 25-slot Inventory & Hotbar
         this.inventory.addItem('wood', 30);
@@ -1880,6 +1908,7 @@ class ReserveGame {
         this.resizeCanvas();
         window.addEventListener('resize', () => this.resizeCanvas());
 
+        this.recordDayBaseline();
         this.setupUIControls();
         this.setupInputListeners();
         this.setupMainMenuAndPauseControls();
@@ -1889,6 +1918,17 @@ class ReserveGame {
 
         this.startBackgroundLoop();
         this.startRenderLoop();
+    }
+
+    recordDayBaseline() {
+        this.dayBaseline = {
+            wood: this.inventory.getItemCount('wood') + this.inventory.getItemCount('braai_wood'),
+            stone: this.inventory.getItemCount('stone') + this.inventory.getItemCount('processedStone'),
+            meat: this.inventory.getItemCount('raw_meat') + this.inventory.getItemCount('cooked_meat'),
+            funds: this.state.funds,
+            staffCount: this.state.hiredRangers.length,
+            animalCount: this.state.ownedAnimals.length
+        };
     }
 
     resizeCanvas() {
@@ -1975,7 +2015,8 @@ class ReserveGame {
 
         const modalsToClose = [
             'furnace-modal', 'braai-modal', 'workbench-modal', 'inventory-modal',
-            'container-modal', 'crate-modal', 'load-game-modal', 'save-game-modal', 'weekly-recap-modal'
+            'container-modal', 'crate-modal', 'load-game-modal', 'save-game-modal',
+            'weekly-recap-modal', 'hq-modal', 'ranger-hut-modal', 'morning-recap-modal'
         ];
 
         modalsToClose.forEach(id => {
@@ -1985,6 +2026,10 @@ class ReserveGame {
                 closedSomething = true;
             }
         });
+
+        if (closedSomething) {
+            this.player.isMovementLocked = false;
+        }
 
         if (!closedSomething) {
             const mainMenu = document.getElementById('main-menu-overlay');
@@ -2169,7 +2214,9 @@ class ReserveGame {
             `;
 
             if (meta.exists) {
-                slotCard.addEventListener('click', () => {
+                const loadBtn = slotCard.querySelector('button');
+                const handleLoad = (e) => {
+                    e.stopPropagation();
                     if (SaveManager.loadGame(this, slotId)) {
                         this.showNotification(`Game Loaded Successfully from Slot ${slotId}!`);
                         const loadModal = document.getElementById('load-game-modal');
@@ -2177,11 +2224,16 @@ class ReserveGame {
                         const mainMenu = document.getElementById('main-menu-overlay');
                         if (mainMenu) mainMenu.classList.add('hidden');
                         this.isPaused = false;
+                        this.player.isMovementLocked = false;
                         if (this.audioManager) this.audioManager.startAudio();
                     } else {
                         this.showNotification('Failed to load save data!');
                     }
-                });
+                };
+                slotCard.addEventListener('click', handleLoad);
+                if (loadBtn) {
+                    loadBtn.addEventListener('click', handleLoad);
+                }
             }
 
             container.appendChild(slotCard);
@@ -2225,6 +2277,41 @@ class ReserveGame {
         const closeBraaiBtn = document.getElementById('close-braai-btn');
         if (closeBraaiBtn) {
             closeBraaiBtn.addEventListener('click', () => this.closeBraaiModal());
+        }
+
+        const closeHqBtn = document.getElementById('close-hq-btn');
+        if (closeHqBtn) {
+            closeHqBtn.addEventListener('click', () => this.closeHqModal());
+        }
+
+        const togglePlayerHqBtn = document.getElementById('toggle-player-hq-assignment-btn');
+        if (togglePlayerHqBtn) {
+            togglePlayerHqBtn.addEventListener('click', () => this.togglePlayerHqAssignment());
+        }
+
+        const sleepBtn = document.getElementById('sleep-till-morning-btn');
+        if (sleepBtn) {
+            sleepBtn.addEventListener('click', () => this.sleepTillMorning());
+        }
+
+        const startDayBtn = document.getElementById('start-day-btn');
+        if (startDayBtn) {
+            startDayBtn.addEventListener('click', () => this.startNewDayFromRecap());
+        }
+
+        const closeRangerHutBtn = document.getElementById('close-ranger-hut-btn');
+        if (closeRangerHutBtn) {
+            closeRangerHutBtn.addEventListener('click', () => this.closeRangerHutModal());
+        }
+
+        const assignRangerHutBtn = document.getElementById('assign-ranger-hut-btn');
+        if (assignRangerHutBtn) {
+            assignRangerHutBtn.addEventListener('click', () => this.assignRangerToActiveHut());
+        }
+
+        const unassignRangerHutBtn = document.getElementById('unassign-ranger-hut-btn');
+        if (unassignRangerHutBtn) {
+            unassignRangerHutBtn.addEventListener('click', () => this.unassignRangerFromActiveHut());
         }
 
         const addBraaiFuelBtn = document.getElementById('add-braai-fuel-btn');
@@ -2453,7 +2540,21 @@ class ReserveGame {
             }
         }
 
-        // 3. Check Placed Building Clicks (Workbench, Furnace, etc.)
+        // Check Reserve HQ click
+        if (mx >= this.hq.x && mx <= this.hq.x + this.hq.width &&
+            my >= this.hq.y && my <= this.hq.y + this.hq.height) {
+            const hqCenterX = this.hq.x + this.hq.width / 2;
+            const hqCenterY = this.hq.y + this.hq.height / 2;
+            const dist = Math.hypot(this.player.x - hqCenterX, this.player.y - hqCenterY);
+            if (dist > 180) {
+                this.showNotification("Move closer to Reserve HQ!");
+                return;
+            }
+            this.openHqModal();
+            return;
+        }
+
+        // 3. Check Placed Building Clicks (Workbench, Furnace, Ranger Hut, etc.)
         for (const b of this.state.placedBuildings) {
             const halfW = b.width / 2;
             const halfH = b.height / 2;
@@ -2476,6 +2577,10 @@ class ReserveGame {
                 if (b.type === 'braai') {
                     const braaiObj = this.braais.find(br => br.id === b.id);
                     if (braaiObj) this.openBraaiModal(braaiObj);
+                    return;
+                }
+                if (b.type === 'ranger_hut') {
+                    this.openRangerHutModal(b);
                     return;
                 }
                 if (b.type === 'wood_chopping_station') {
@@ -2558,14 +2663,17 @@ class ReserveGame {
         const modal = document.getElementById('inventory-modal');
         if (!modal) return;
         if (modal.classList.contains('hidden')) {
+            this.player.isMovementLocked = true;
             modal.classList.remove('hidden');
             this.renderInventoryGrid();
         } else {
+            this.player.isMovementLocked = false;
             modal.classList.add('hidden');
         }
     }
 
     closeInventoryModal() {
+        this.player.isMovementLocked = false;
         const modal = document.getElementById('inventory-modal');
         if (modal) modal.classList.add('hidden');
     }
@@ -2723,6 +2831,7 @@ class ReserveGame {
 
     // Forgotten Ranger Crate Interactivity (2-Step Event)
     openCrateModal(crate) {
+        this.player.isMovementLocked = true;
         this.activeCrate = crate;
 
         // Initialize crate raw meat loot if not done yet
@@ -2800,6 +2909,7 @@ class ReserveGame {
 
     // Container UI Modal
     openContainerModal() {
+        this.player.isMovementLocked = true;
         const modal = document.getElementById('container-modal');
         if (modal) {
             modal.classList.remove('hidden');
@@ -2808,6 +2918,7 @@ class ReserveGame {
     }
 
     closeContainerModal() {
+        this.player.isMovementLocked = false;
         const modal = document.getElementById('container-modal');
         if (modal) modal.classList.add('hidden');
     }
@@ -2906,8 +3017,222 @@ class ReserveGame {
         this.renderContainerUI();
     }
 
+    isNight() {
+        const totalHours = ((this.timeElapsedInDay / this.dayDuration) * 24 + 6) % 24;
+        return totalHours < 6 || totalHours >= 18;
+    }
+
+    openHqModal() {
+        this.player.isMovementLocked = true;
+        const modal = document.getElementById('hq-modal');
+        if (modal) {
+            modal.classList.remove('hidden');
+            this.updateHqModalUI();
+        }
+    }
+
+    closeHqModal() {
+        this.player.isMovementLocked = false;
+        const modal = document.getElementById('hq-modal');
+        if (modal) modal.classList.add('hidden');
+    }
+
+    updateHqModalUI() {
+        const statusEl = document.getElementById('hq-assignment-status');
+        const btnEl = document.getElementById('toggle-player-hq-assignment-btn');
+        const sleepBox = document.getElementById('hq-sleep-container');
+
+        if (statusEl) {
+            statusEl.textContent = this.isPlayerAssignedToHQ
+                ? "Assigned to Reserve HQ"
+                : "Unassigned";
+            statusEl.style.color = this.isPlayerAssignedToHQ ? "var(--accent-green)" : "var(--text-main)";
+        }
+        if (btnEl) {
+            btnEl.textContent = this.isPlayerAssignedToHQ
+                ? "Unassign Player from HQ"
+                : "Assign Player to HQ";
+            btnEl.className = `action-btn ${this.isPlayerAssignedToHQ ? "" : "positive-btn"}`;
+            if (this.isPlayerAssignedToHQ) {
+                btnEl.style.background = "var(--accent-red)";
+                btnEl.style.color = "white";
+            } else {
+                btnEl.style.background = "";
+                btnEl.style.color = "";
+            }
+        }
+        if (sleepBox) {
+            if (this.isPlayerAssignedToHQ && this.isNight()) {
+                sleepBox.classList.remove('hidden');
+            } else {
+                sleepBox.classList.add('hidden');
+            }
+        }
+    }
+
+    togglePlayerHqAssignment() {
+        this.isPlayerAssignedToHQ = !this.isPlayerAssignedToHQ;
+        this.showNotification(
+            this.isPlayerAssignedToHQ
+                ? "Assigned to Reserve HQ!"
+                : "Unassigned from Reserve HQ."
+        );
+        this.updateHqModalUI();
+    }
+
+    sleepTillMorning() {
+        if (!this.isNight() || !this.isPlayerAssignedToHQ) return;
+
+        this.closeHqModal();
+        this.timeElapsedInDay = 0;
+        this.processNewDay(true);
+    }
+
+    showMorningRecapModal() {
+        this.isPaused = true;
+        this.player.isMovementLocked = true;
+
+        const modal = document.getElementById('morning-recap-modal');
+        if (!modal) return;
+
+        const dayNumEl = document.getElementById('morning-day-num');
+        const woodChangeEl = document.getElementById('morning-wood-change');
+        const stoneChangeEl = document.getElementById('morning-stone-change');
+        const meatChangeEl = document.getElementById('morning-meat-change');
+        const fundsChangeEl = document.getElementById('morning-funds-change');
+        const staffAcquiredEl = document.getElementById('morning-staff-acquired');
+        const animalsAcquiredEl = document.getElementById('morning-animals-acquired');
+
+        if (dayNumEl) dayNumEl.textContent = this.state.day;
+
+        if (this.dayBaseline) {
+            const currentWood = this.inventory.getItemCount('wood') + this.inventory.getItemCount('braai_wood');
+            const currentStone = this.inventory.getItemCount('stone') + this.inventory.getItemCount('processedStone');
+            const currentMeat = this.inventory.getItemCount('raw_meat') + this.inventory.getItemCount('cooked_meat');
+            const currentFunds = this.state.funds;
+            const currentStaff = this.state.hiredRangers.length;
+            const currentAnimals = this.state.ownedAnimals.length;
+
+            const dWood = currentWood - this.dayBaseline.wood;
+            const dStone = currentStone - this.dayBaseline.stone;
+            const dMeat = currentMeat - this.dayBaseline.meat;
+            const dFunds = currentFunds - this.dayBaseline.funds;
+            const dStaff = Math.max(0, currentStaff - this.dayBaseline.staffCount);
+            const dAnimals = Math.max(0, currentAnimals - this.dayBaseline.animalCount);
+
+            if (woodChangeEl) woodChangeEl.textContent = `${dWood >= 0 ? '+' : ''}${dWood}`;
+            if (stoneChangeEl) stoneChangeEl.textContent = `${dStone >= 0 ? '+' : ''}${dStone}`;
+            if (meatChangeEl) meatChangeEl.textContent = `${dMeat >= 0 ? '+' : ''}${dMeat}`;
+            if (fundsChangeEl) fundsChangeEl.textContent = `${dFunds >= 0 ? '+' : ''}$${dFunds.toLocaleString()}`;
+            if (staffAcquiredEl) staffAcquiredEl.textContent = `+${dStaff}`;
+            if (animalsAcquiredEl) animalsAcquiredEl.textContent = `+${dAnimals}`;
+        }
+
+        modal.classList.remove('hidden');
+    }
+
+    startNewDayFromRecap() {
+        const modal = document.getElementById('morning-recap-modal');
+        if (modal) modal.classList.add('hidden');
+
+        this.recordDayBaseline();
+        this.isPaused = false;
+        this.player.isMovementLocked = false;
+        this.showNotification(`Day ${this.state.day} started!`);
+    }
+
+    openRangerHutModal(hutBuilding) {
+        this.player.isMovementLocked = true;
+        this.activeRangerHut = hutBuilding;
+        const modal = document.getElementById('ranger-hut-modal');
+        if (modal) {
+            modal.classList.remove('hidden');
+            this.updateRangerHutModalUI();
+        }
+    }
+
+    closeRangerHutModal() {
+        this.player.isMovementLocked = false;
+        this.activeRangerHut = null;
+        const modal = document.getElementById('ranger-hut-modal');
+        if (modal) modal.classList.add('hidden');
+    }
+
+    updateRangerHutModalUI() {
+        if (!this.activeRangerHut) return;
+        const assignedText = document.getElementById('ranger-hut-assigned-text');
+        const selectEl = document.getElementById('ranger-hut-select');
+        const assignBtn = document.getElementById('assign-ranger-hut-btn');
+        const unassignBtn = document.getElementById('unassign-ranger-hut-btn');
+
+        const assignedRangerId = this.activeRangerHut.assignedRangerId;
+        const assignedRanger = this.state.hiredRangers.find(r => r.id === assignedRangerId);
+
+        if (assignedText) {
+            assignedText.textContent = assignedRanger
+                ? `Assigned: ${assignedRanger.name}`
+                : "None assigned";
+            assignedText.style.color = assignedRanger ? "var(--accent-green)" : "var(--text-muted)";
+        }
+
+        if (selectEl) {
+            selectEl.innerHTML = "";
+            const availableRangers = this.state.hiredRangers.filter(r => {
+                const isAssignedElsewhere = this.state.placedBuildings.some(
+                    b => b.type === 'ranger_hut' && b.id !== this.activeRangerHut.id && b.assignedRangerId === r.id
+                );
+                return !isAssignedElsewhere;
+            });
+
+            if (availableRangers.length === 0) {
+                const opt = document.createElement('option');
+                opt.value = "";
+                opt.textContent = "-- No Unassigned Hired Rangers --";
+                selectEl.appendChild(opt);
+                if (assignBtn) assignBtn.disabled = true;
+            } else {
+                if (assignBtn) assignBtn.disabled = false;
+                availableRangers.forEach(r => {
+                    const opt = document.createElement('option');
+                    opt.value = r.id;
+                    opt.textContent = `${r.name} ($${r.dailyWage}/d)`;
+                    if (r.id === assignedRangerId) opt.selected = true;
+                    selectEl.appendChild(opt);
+                });
+            }
+        }
+
+        if (unassignBtn) {
+            unassignBtn.style.display = assignedRangerId ? "block" : "none";
+        }
+    }
+
+    assignRangerToActiveHut() {
+        if (!this.activeRangerHut) return;
+        const selectEl = document.getElementById('ranger-hut-select');
+        if (!selectEl || !selectEl.value) return;
+
+        const rangerId = selectEl.value;
+        const ranger = this.state.hiredRangers.find(r => r.id === rangerId);
+        if (ranger) {
+            this.activeRangerHut.assignedRangerId = rangerId;
+            this.syncRangersWithInfrastructure();
+            this.showNotification(`Assigned ${ranger.name} to Ranger Hut!`);
+            this.updateRangerHutModalUI();
+        }
+    }
+
+    unassignRangerFromActiveHut() {
+        if (!this.activeRangerHut) return;
+        this.activeRangerHut.assignedRangerId = null;
+        this.syncRangersWithInfrastructure();
+        this.showNotification("Unassigned Ranger from Hut.");
+        this.updateRangerHutModalUI();
+    }
+
     // Braai Modal
     openBraaiModal(braai) {
+        this.player.isMovementLocked = true;
         this.activeBraai = braai;
         const modal = document.getElementById('braai-modal');
         if (modal) {
@@ -2917,6 +3242,7 @@ class ReserveGame {
     }
 
     closeBraaiModal() {
+        this.player.isMovementLocked = false;
         this.activeBraai = null;
         const modal = document.getElementById('braai-modal');
         if (modal) modal.classList.add('hidden');
@@ -2943,6 +3269,7 @@ class ReserveGame {
 
     // Furnace Modal
     openFurnaceModal(furnace) {
+        this.player.isMovementLocked = true;
         this.activeFurnace = furnace;
         const modal = document.getElementById('furnace-modal');
         if (modal) {
@@ -2952,6 +3279,7 @@ class ReserveGame {
     }
 
     closeFurnaceModal() {
+        this.player.isMovementLocked = false;
         this.activeFurnace = null;
         const modal = document.getElementById('furnace-modal');
         if (modal) modal.classList.add('hidden');
@@ -2978,6 +3306,7 @@ class ReserveGame {
 
     // Workbench Modal System
     openWorkbenchModal() {
+        this.player.isMovementLocked = true;
         const modal = document.getElementById('workbench-modal');
         if (modal) {
             modal.classList.remove('hidden');
@@ -2986,6 +3315,7 @@ class ReserveGame {
     }
 
     closeWorkbenchModal() {
+        this.player.isMovementLocked = false;
         const modal = document.getElementById('workbench-modal');
         if (modal) modal.classList.add('hidden');
     }
@@ -3396,7 +3726,7 @@ class ReserveGame {
             this.revealedChunks.add(`${chunkX},${chunkY}`);
 
             const resourceNodes = this.chunkManager.getAllResourceNodes();
-            this.player.update(dt, this.keys, resourceNodes, this.state.placedBuildings);
+            this.player.update(dt, this.keys, resourceNodes, this.state.placedBuildings, this.hq);
             this.chunkManager.update(this.player.x, this.player.y, this.reserve, dt);
 
             // Hold-to-mine logic when tool equipped
@@ -3441,7 +3771,7 @@ class ReserveGame {
         requestAnimationFrame(frame);
     }
 
-    processNewDay() {
+    processNewDay(isFastForward = false) {
         const dailyIncome = this.getDailyAttractionIncome();
         const dailyWages = this.getDailyRangerWages();
         const dailyNet = dailyIncome - dailyWages;
@@ -3455,12 +3785,16 @@ class ReserveGame {
         this.animalMarketListings = generateAnimalListings(6);
         this.rangerListings = generateRangerListings(6);
 
-        // Check if week ended (every 7 days)
-        if (this.state.day % 7 === 0) {
-            this.triggerWeeklyRecapModal();
+        this.state.day += 1;
+
+        if (isFastForward) {
+            this.showMorningRecapModal();
         } else {
-            this.state.day += 1;
-            this.showNotification(`Day ${this.state.day} started! Daily net income: ${dailyNet >= 0 ? '+' : ''}$${dailyNet}`);
+            if ((this.state.day - 1) % 7 === 0) {
+                this.triggerWeeklyRecapModal();
+            } else {
+                this.showNotification(`Day ${this.state.day} started! Daily net income: ${dailyNet >= 0 ? '+' : ''}$${dailyNet}`);
+            }
         }
 
         this.updateUI();
@@ -3948,8 +4282,8 @@ class ReserveGame {
         ctx.stroke();
 
         // Check Reserve HQ Off-Screen Status and Render Directional Indicator Arrow
-        const hqWorldX = this.reserve.x + 150;
-        const hqWorldY = this.reserve.y + 135;
+        const hqWorldX = this.hq.x + this.hq.width / 2;
+        const hqWorldY = this.hq.y + this.hq.height / 2;
         const hqPos = worldToMinimap(hqWorldX, hqWorldY);
 
         const radiusMap = w / 2 - 10;
@@ -4037,24 +4371,22 @@ class ReserveGame {
         // Waterhole
         this.waterhole.render(this.ctx, this.images);
 
-        // Reserve HQ
-        const campX = this.reserve.x + 100;
-        const campY = this.reserve.y + 100;
+        // Reserve HQ (3x3 grid size: 144x144px)
         const hqImg = this.images['reserve-hq.png'];
         if (hqImg && hqImg.complete) {
-            this.ctx.drawImage(hqImg, campX, campY, 110, 80);
+            this.ctx.drawImage(hqImg, this.hq.x, this.hq.y, this.hq.width, this.hq.height);
         } else {
             this.ctx.fillStyle = '#5c4028';
-            this.ctx.fillRect(campX, campY, 100, 70);
+            this.ctx.fillRect(this.hq.x, this.hq.y, this.hq.width, this.hq.height);
             this.ctx.strokeStyle = '#3a2717';
             this.ctx.lineWidth = 3;
-            this.ctx.strokeRect(campX, campY, 100, 70);
+            this.ctx.strokeRect(this.hq.x, this.hq.y, this.hq.width, this.hq.height);
 
             this.ctx.fillStyle = '#f39c12';
             this.ctx.font = 'bold 12px sans-serif';
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
-            this.ctx.fillText(`RESERVE HQ T${this.state.campTier}`, campX + 50, campY + 35);
+            this.ctx.fillText(`RESERVE HQ T${this.state.campTier}`, this.hq.x + this.hq.width / 2, this.hq.y + this.hq.height / 2);
         }
 
         // Dog Jock

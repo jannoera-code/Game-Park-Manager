@@ -212,8 +212,8 @@ const WORKBENCH_CRAFTABLES = [
         woodCost: 20,
         stoneCost: 10,
         processedStoneCost: 0,
-        width: 80,
-        height: 80,
+        width: 96,
+        height: 96,
         description: 'Provides operational staging post for hired rangers to spawn, rest, and patrol.'
     },
     {
