@@ -87,16 +87,22 @@
 
     <!-- Reserve HQ Assignment Modal -->
     <div id="hq-modal" class="modal-backdrop hidden">
-        <div class="modal-card">
+        <div class="modal-card" style="max-width: 550px;">
             <div class="modal-header">
-                <h3>🏛️ Reserve HQ Operations</h3>
+                <h3>🏛️ Reserve HQ Accommodations</h3>
                 <button id="close-hq-btn" class="close-btn">&times;</button>
             </div>
             <div class="modal-body">
-                <div style="background: var(--bg-glass-card); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); text-align: center;">
-                    <h4 style="color: var(--accent-gold); margin-bottom: 6px;">Player Assignment Status</h4>
-                    <p id="hq-assignment-status" style="font-size: 0.9rem; margin-bottom: 10px; color: var(--text-main);">Unassigned</p>
-                    <button id="toggle-player-hq-assignment-btn" class="action-btn positive-btn">Assign Player to HQ</button>
+                <p style="font-size: 0.85rem; color: var(--text-muted); text-align: center;">Capacity: 1 Player & 1 Companion Dog (Jock)</p>
+
+                <div class="accommodation-section">
+                    <h4 style="color: var(--accent-gold); margin-bottom: 8px;">👤 Resident Slot (1 Max)</h4>
+                    <div id="hq-human-slots" class="slots-array-grid"></div>
+                </div>
+
+                <div class="accommodation-section">
+                    <h4 style="color: var(--accent-gold); margin-bottom: 8px;">🐾 Pet Companion Slot (1 Max)</h4>
+                    <div id="hq-pet-slots" class="slots-array-grid"></div>
                 </div>
 
                 <div id="hq-sleep-container" class="hidden" style="background: rgba(41, 128, 185, 0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--accent-blue); text-align: center;">
@@ -110,20 +116,48 @@
 
     <!-- Ranger Hut Assignment Modal -->
     <div id="ranger-hut-modal" class="modal-backdrop hidden">
-        <div class="modal-card">
+        <div class="modal-card" style="max-width: 550px;">
             <div class="modal-header">
-                <h3>🏠 Ranger Hut Management</h3>
+                <h3>🏠 Ranger Hut Accommodations</h3>
                 <button id="close-ranger-hut-btn" class="close-btn">&times;</button>
             </div>
             <div class="modal-body">
-                <div style="background: var(--bg-glass-card); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color);">
-                    <h4 style="color: var(--accent-gold); margin-bottom: 8px;">Assigned Ranger</h4>
-                    <p id="ranger-hut-assigned-text" style="font-size: 0.9rem; margin-bottom: 10px; color: var(--text-main);">None</p>
-                    <div id="ranger-hut-assign-controls" style="display: flex; flex-direction: column; gap: 8px;">
-                        <select id="ranger-hut-select" style="padding: 8px; border-radius: 6px; background: #1a252c; color: var(--text-main); border: 1px solid var(--border-color);"></select>
-                        <button id="assign-ranger-hut-btn" class="action-btn positive-btn">Assign Selected Ranger</button>
-                        <button id="unassign-ranger-hut-btn" class="action-btn" style="background: var(--accent-red); color: white;">Unassign Ranger</button>
+                <p style="font-size: 0.85rem; color: var(--text-muted); text-align: center;">Capacity: 2 Hired Rangers & 1 Companion Dog</p>
+
+                <div class="accommodation-section">
+                    <h4 style="color: var(--accent-gold); margin-bottom: 8px;">🤠 Hired Ranger Slots (2 Max)</h4>
+                    <div id="ranger-hut-human-slots" class="slots-array-grid"></div>
+                </div>
+
+                <div class="accommodation-section">
+                    <h4 style="color: var(--accent-gold); margin-bottom: 8px;">🐾 Pet Companion Slot (1 Max)</h4>
+                    <div id="ranger-hut-pet-slots" class="slots-array-grid"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dog Bowl Management Modal -->
+    <div id="dog-bowl-modal" class="modal-backdrop hidden">
+        <div class="modal-card" style="max-width: 450px;">
+            <div class="modal-header">
+                <h3>🥣 Dog Bowl Management</h3>
+                <button id="close-dog-bowl-btn" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="background: var(--bg-glass-card); padding: 16px; border-radius: 10px; border: 1px solid var(--border-color); text-align: center; display: flex; flex-direction: column; gap: 12px;">
+                    <div style="font-size: 3rem;">🥣</div>
+                    <div>
+                        <h4 style="color: var(--accent-gold); font-size: 1.1rem; margin-bottom: 4px;">Jock's Feeding Bowl</h4>
+                        <p style="font-size: 0.85rem; color: var(--text-muted);">Insert Dog Meals to feed your companion Jock.</p>
                     </div>
+                    <div class="recap-summary-box" style="margin: 4px 0;">
+                        <div class="recap-row">
+                            <span>🍖 Meals in Bowl:</span>
+                            <strong id="dog-bowl-meals-count" style="color: var(--accent-gold);">0 / 5</strong>
+                        </div>
+                    </div>
+                    <button id="insert-dog-meal-btn" class="action-btn positive-btn">+ Insert 1 Dog Meal</button>
                 </div>
             </div>
         </div>
@@ -206,6 +240,32 @@
 
     <!-- UI Overlay Layer -->
     <div id="ui-overlay" class="ui-overlay">
+
+        <!-- Dynamic Entity Hover UI Tooltip -->
+        <div id="entity-hover-tooltip" class="entity-hover-tooltip hidden">
+            <div id="tooltip-jock-header" class="tooltip-flavor-header hidden">
+                <span class="companion-tag">🐕 COMPANION</span>
+                <p class="companion-flavor">Golden-coated, pointy-eared companion</p>
+            </div>
+            <div id="tooltip-entity-title" class="tooltip-title">Entity Name</div>
+            <div class="tooltip-stats">
+                <div class="tooltip-bar-group">
+                    <span class="tooltip-label">❤️ HP</span>
+                    <div class="tooltip-bar"><div id="tooltip-hp-fill" class="tooltip-fill hp-fill" style="width: 100%;"></div></div>
+                    <span id="tooltip-hp-text" class="tooltip-val">100/100</span>
+                </div>
+                <div class="tooltip-bar-group">
+                    <span class="tooltip-label">🍖 Hunger</span>
+                    <div class="tooltip-bar"><div id="tooltip-hunger-fill" class="tooltip-fill hunger-fill" style="width: 100%;"></div></div>
+                    <span id="tooltip-hunger-text" class="tooltip-val">100/100</span>
+                </div>
+                <div class="tooltip-bar-group">
+                    <span class="tooltip-label">💧 Thirst</span>
+                    <div class="tooltip-bar"><div id="tooltip-thirst-fill" class="tooltip-fill thirst-fill" style="width: 100%;"></div></div>
+                    <span id="tooltip-thirst-text" class="tooltip-val">100/100</span>
+                </div>
+            </div>
+        </div>
 
         <!-- Top-Left Player Survival HUD -->
         <div class="survival-hud">
