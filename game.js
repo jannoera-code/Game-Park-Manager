@@ -249,13 +249,17 @@ class SaveManager {
             },
             economy: {
                 funds: game.state.funds,
+                dosh: game.state.dosh || 0,
                 day: game.state.day,
                 week: game.week,
                 timeElapsedInDay: game.timeElapsedInDay,
                 campTier: game.state.campTier,
                 fenceTier: game.state.fenceTier,
                 weeklyStats: game.weeklyStats,
-                buffs: game.buffs
+                buffs: game.buffs,
+                isCreativeMode: game.state.isCreativeMode,
+                tutorialIndex: game.state.tutorialIndex || 0,
+                tutorialEvents: game.state.tutorialEvents || {}
             }
         };
     }
@@ -290,12 +294,16 @@ class SaveManager {
         // Restore Economy & Time
         if (data.economy) {
             game.state.funds = data.economy.funds ?? 1000;
+            game.state.dosh = data.economy.dosh ?? 0;
             game.state.day = data.economy.day ?? 1;
             game.week = data.economy.week ?? 1;
             game.timeElapsedInDay = data.economy.timeElapsedInDay ?? 0;
             game.state.dayProgress = (game.timeElapsedInDay / game.dayDuration) * 100;
             game.state.campTier = data.economy.campTier ?? 1;
             game.state.fenceTier = data.economy.fenceTier ?? 1;
+            game.state.isCreativeMode = !!data.economy.isCreativeMode;
+            game.state.tutorialIndex = data.economy.tutorialIndex ?? 0;
+            game.state.tutorialEvents = data.economy.tutorialEvents || {};
             if (data.economy.weeklyStats) game.weeklyStats = data.economy.weeklyStats;
             if (data.economy.buffs) game.buffs = data.economy.buffs;
         }
@@ -1163,61 +1171,82 @@ class Player {
             this.screenShakeTimer = Math.max(0, this.screenShakeTimer - dt);
         }
 
-        // Update Survival Mechanics: Thirst, Hunger & HP
-        this.thirst = Math.max(0, this.thirst - this.thirstDepleteRate * dt);
-        this.hunger = Math.max(0, this.hunger - this.hungerDepleteRate * dt);
-
-        // Track time spent in base starving/dehydrated states
-        if (this.hunger <= 0) {
-            this.starvingTimer += dt;
-        } else {
+        // Creative Mode Survival Bypass
+        if (window.game && window.game.state.isCreativeMode) {
+            this.hp = 100;
+            this.maxHp = 100;
+            this.thirst = 100;
+            this.maxThirst = 100;
+            this.hunger = 100;
+            this.maxHunger = 100;
+            this.speedPenaltyMult = 1.0;
             this.starvingTimer = 0;
-        }
-
-        if (this.thirst <= 0) {
-            this.dehydratedTimer += dt;
-        } else {
             this.dehydratedTimer = 0;
-        }
+        } else {
+            // Pause Hunger and Thirst depletion if player is sleeping or in cabin/HQ menu or morning recap
+            const isCabinMenuOpen = window.game && (
+                !document.getElementById('hq-modal')?.classList.contains('hidden') ||
+                !document.getElementById('morning-recap-modal')?.classList.contains('hidden') ||
+                window.game.isSleeping
+            );
 
-        // Determine critical status threshold: 2 in-game days = 2 * 300s = 600s
-        const criticalThreshold = 600;
-
-        let maxHpPenalty = 0;
-        let speedPenalty = 0;
-
-        if (this.hunger <= 0) {
-            if (this.starvingTimer >= criticalThreshold) {
-                maxHpPenalty += 0.50;
-                speedPenalty += 0.20;
-            } else {
-                maxHpPenalty += 0.25;
-                speedPenalty += 0.10;
+            if (!isCabinMenuOpen) {
+                this.thirst = Math.max(0, this.thirst - this.thirstDepleteRate * dt);
+                this.hunger = Math.max(0, this.hunger - this.hungerDepleteRate * dt);
             }
-        }
 
-        if (this.thirst <= 0) {
-            if (this.dehydratedTimer >= criticalThreshold) {
-                maxHpPenalty += 0.50;
-                speedPenalty += 0.20;
+            // Track time spent in base starving/dehydrated states
+            if (this.hunger <= 0) {
+                this.starvingTimer += dt;
             } else {
-                maxHpPenalty += 0.25;
-                speedPenalty += 0.10;
+                this.starvingTimer = 0;
             }
-        }
 
-        this.maxHp = Math.max(0, Math.round(this.baseMaxHp * (1 - maxHpPenalty)));
-        this.speedPenaltyMult = Math.max(0, 1 - speedPenalty);
-        this.hp = Math.min(this.hp, this.maxHp);
+            if (this.thirst <= 0) {
+                this.dehydratedTimer += dt;
+            } else {
+                this.dehydratedTimer = 0;
+            }
 
-        if (this.thirst <= 0 || this.hunger <= 0) {
-            this.hp = Math.max(0, this.hp - this.starveHpDepleteRate * dt);
-        }
+            // Determine critical status threshold: 2 in-game days = 2 * 300s = 600s
+            const criticalThreshold = 600;
 
-        // Trigger Death Sequence if HP <= 0 or Max HP <= 0
-        if (this.hp <= 0 || this.maxHp <= 0) {
-            if (window.game) {
-                window.game.handlePlayerDeath();
+            let maxHpPenalty = 0;
+            let speedPenalty = 0;
+
+            if (this.hunger <= 0) {
+                if (this.starvingTimer >= criticalThreshold) {
+                    maxHpPenalty += 0.50;
+                    speedPenalty += 0.20;
+                } else {
+                    maxHpPenalty += 0.25;
+                    speedPenalty += 0.10;
+                }
+            }
+
+            if (this.thirst <= 0) {
+                if (this.dehydratedTimer >= criticalThreshold) {
+                    maxHpPenalty += 0.50;
+                    speedPenalty += 0.20;
+                } else {
+                    maxHpPenalty += 0.25;
+                    speedPenalty += 0.10;
+                }
+            }
+
+            this.maxHp = Math.max(0, Math.round(this.baseMaxHp * (1 - maxHpPenalty)));
+            this.speedPenaltyMult = Math.max(0, 1 - speedPenalty);
+            this.hp = Math.min(this.hp, this.maxHp);
+
+            if (this.thirst <= 0 || this.hunger <= 0) {
+                this.hp = Math.max(0, this.hp - this.starveHpDepleteRate * dt);
+            }
+
+            // Trigger Death Sequence if HP <= 0 or Max HP <= 0
+            if (this.hp <= 0 || this.maxHp <= 0) {
+                if (window.game) {
+                    window.game.handlePlayerDeath();
+                }
             }
         }
 
@@ -2327,13 +2356,17 @@ class ReserveGame {
         this.player.hp = 100;
         this.player.speedPenaltyMult = 1.0;
 
-        // Teleport coordinates to "Reserve HQ" center
-        const hqCenterX = this.hq.x + this.hq.width / 2;
-        const hqCenterY = this.hq.y + this.hq.height / 2;
-        this.player.x = hqCenterX;
-        this.player.y = hqCenterY;
+        // Reset player movement lock and active key states
+        this.player.isMovementLocked = false;
+        for (const k in this.keys) {
+            this.keys[k] = false;
+        }
 
-        this.showNotification("You collapsed! Items dropped on ground and teleported to Reserve HQ.");
+        // Teleport coordinates to spawn point (250, 250)
+        this.player.x = 250;
+        this.player.y = 250;
+
+        this.showNotification("You collapsed! Items dropped on ground and respawned at spawn point.");
         this.updateUI();
     }
 
@@ -2860,6 +2893,7 @@ class ReserveGame {
                 if (this.activeBraai) {
                     const collected = this.activeBraai.collectOutput();
                     if (collected > 0) {
+                        this.recordTutorialEvent('cookedFood');
                         if (this.inventory.canAddItem('cooked_meat', collected)) {
                             this.inventory.addItem('cooked_meat', collected);
                             this.showNotification(`Collected +${collected} Cooked Meat!`);
@@ -2870,6 +2904,23 @@ class ReserveGame {
                     }
                     this.updateUI();
                     this.updateBraaiModalUI();
+                }
+            });
+        }
+
+        const boilWaterBtn = document.getElementById('boil-water-btn');
+        if (boilWaterBtn) {
+            boilWaterBtn.addEventListener('click', () => {
+                if (this.activeFurnace) {
+                    if (this.activeFurnace.fuelWood >= 1) {
+                        this.activeFurnace.fuelWood -= 1;
+                        this.recordTutorialEvent('boiledWater');
+                        this.showNotification('Boiled Water using Furnace fuel!');
+                        this.updateUI();
+                        this.updateFurnaceModalUI();
+                    } else {
+                        this.showNotification('Furnace needs Wood fuel to boil water!');
+                    }
                 }
             });
         }
@@ -3124,6 +3175,9 @@ class ReserveGame {
             }
             this.inventory.consumeItem('cooked_meat', 1);
             this.player.hunger = Math.min(this.player.maxHunger, this.player.hunger + 40);
+            if (this.player.hp < this.player.maxHp) {
+                this.recordTutorialEvent('healedDamage');
+            }
             this.player.hp = Math.min(this.player.maxHp, this.player.hp + 15);
 
             // Drop Scraps on the ground at player position
@@ -3201,8 +3255,10 @@ class ReserveGame {
                 const neededThirst = this.player.maxThirst - this.player.thirst;
                 const drank = this.waterhole.drink(Math.min(neededThirst > 0 ? neededThirst : 20, 25));
 
+                this.recordTutorialEvent('drankWater');
                 this.player.thirst = Math.min(this.player.maxThirst, this.player.thirst + drank);
                 if (this.player.hp < this.player.maxHp) {
+                    this.recordTutorialEvent('healedDamage');
                     this.player.hp = Math.min(this.player.maxHp, this.player.hp + drank * 0.5);
                 }
 
@@ -3759,6 +3815,7 @@ class ReserveGame {
                 `;
                 slotCard.querySelector('button').addEventListener('click', () => {
                     this.isPlayerAssignedToHQ = true;
+                    this.recordTutorialEvent('assignedCabin');
                     this.showNotification('Assigned Player to Reserve HQ!');
                     this.updateHqModalUI();
                 });
@@ -3802,7 +3859,12 @@ class ReserveGame {
         }
 
         if (sleepBox) {
-            if (this.isPlayerAssignedToHQ && this.isNight()) {
+            const hqCenterX = this.hq.x + this.hq.width / 2;
+            const hqCenterY = this.hq.y + this.hq.height / 2;
+            const dist = Math.hypot(this.player.x - hqCenterX, this.player.y - hqCenterY);
+            const isNearHq = dist <= 200;
+
+            if (this.isPlayerAssignedToHQ && this.isNight() && isNearHq) {
                 sleepBox.classList.remove('hidden');
             } else {
                 sleepBox.classList.add('hidden');
@@ -3831,6 +3893,9 @@ class ReserveGame {
 
     togglePlayerHqAssignment() {
         this.isPlayerAssignedToHQ = !this.isPlayerAssignedToHQ;
+        if (this.isPlayerAssignedToHQ) {
+            this.recordTutorialEvent('assignedCabin');
+        }
         this.showNotification(
             this.isPlayerAssignedToHQ
                 ? "Assigned to Reserve HQ!"
@@ -4187,11 +4252,12 @@ class ReserveGame {
             const saplingCount = this.inventory.getItemCount('sapling');
             const scrapsCount = this.inventory.getItemCount('scraps');
 
-            const canAfford = woodCount >= (itemDef.woodCost || 0) &&
+            const canAfford = this.state.isCreativeMode || (
+                              woodCount >= (itemDef.woodCost || 0) &&
                               stoneCount >= (itemDef.stoneCost || 0) &&
                               pStoneCount >= (itemDef.processedStoneCost || 0) &&
                               saplingCount >= (itemDef.saplingCost || 0) &&
-                              scrapsCount >= (itemDef.scrapsCost || 0);
+                              scrapsCount >= (itemDef.scrapsCost || 0));
 
             const card = document.createElement('div');
             card.className = 'item-card';
@@ -4226,11 +4292,13 @@ class ReserveGame {
                 btn.addEventListener('click', () => {
                     if (itemDef.type === 'item') {
                         if (this.inventory.canAddItem(itemDef.id, 1)) {
-                            this.inventory.consumeItem('wood', itemDef.woodCost || 0);
-                            this.inventory.consumeItem('stone', itemDef.stoneCost || 0);
-                            this.inventory.consumeItem('processedStone', itemDef.processedStoneCost || 0);
-                            if (itemDef.saplingCost) this.inventory.consumeItem('sapling', itemDef.saplingCost);
-                            if (itemDef.scrapsCost) this.inventory.consumeItem('scraps', itemDef.scrapsCost);
+                            if (!this.state.isCreativeMode) {
+                                this.inventory.consumeItem('wood', itemDef.woodCost || 0);
+                                this.inventory.consumeItem('stone', itemDef.stoneCost || 0);
+                                this.inventory.consumeItem('processedStone', itemDef.processedStoneCost || 0);
+                                if (itemDef.saplingCost) this.inventory.consumeItem('sapling', itemDef.saplingCost);
+                                if (itemDef.scrapsCost) this.inventory.consumeItem('scraps', itemDef.scrapsCost);
+                            }
                             this.inventory.addItem(itemDef.id, 1);
                             this.showNotification(`Crafted 1x ${itemDef.name}!`);
                             this.updateUI();
@@ -4251,6 +4319,10 @@ class ReserveGame {
 
     startNewGame() {
         this.state = JSON.parse(JSON.stringify(INITIAL_GAME_STATE));
+        const creativeCheckbox = document.getElementById('creative-mode-checkbox');
+        if (creativeCheckbox) {
+            this.state.isCreativeMode = creativeCheckbox.checked;
+        }
         this.inventory = new Inventory(25, 100);
         this.player.x = 250;
         this.player.y = 250;
@@ -4391,67 +4463,80 @@ class ReserveGame {
         return !hqReachable && !whReachable;
     }
 
+    recordTutorialEvent(eventKey) {
+        if (!this.state.tutorialEvents) this.state.tutorialEvents = {};
+        this.state.tutorialEvents[eventKey] = true;
+        this.updateTutorialChecklist();
+    }
+
     updateTutorialChecklist() {
-        if (this.tutorialState.completed) return;
+        if (typeof TUTORIAL_CHECKLISTS === 'undefined') return;
 
-        const taskWood = document.getElementById('task-wood');
-        const taskWorkbench = document.getElementById('task-workbench');
-        const taskEnclosure = document.getElementById('task-enclosure');
+        const tutorialUI = document.getElementById('tutorial-checklist');
+        const titleEl = document.getElementById('tutorial-title');
+        const itemsEl = document.getElementById('tutorial-items');
 
-        const totalWood = this.inventory.getItemCount('wood') + this.inventory.getItemCount('braai_wood');
-        if (totalWood >= 10) {
-            this.tutorialState.woodCollected = true;
-            if (taskWood) {
-                taskWood.classList.add('completed');
-                const cb = taskWood.querySelector('.checkbox');
-                if (cb) cb.textContent = '[✓]';
-            }
-        } else {
-            this.tutorialState.woodCollected = false;
-            if (taskWood) {
-                taskWood.classList.remove('completed');
-                const cb = taskWood.querySelector('.checkbox');
-                if (cb) cb.textContent = '[ ]';
-            }
+        if (!tutorialUI || !titleEl || !itemsEl) return;
+
+        const currentIndex = this.state.tutorialIndex || 0;
+
+        if (currentIndex >= TUTORIAL_CHECKLISTS.length) {
+            tutorialUI.style.display = 'none';
+            return;
         }
 
-        const hasWorkbench = this.state.placedBuildings.some(b => b.type === 'workbench');
-        if (hasWorkbench) {
-            this.tutorialState.workbenchPlaced = true;
-            if (taskWorkbench) {
-                taskWorkbench.classList.add('completed');
-                const cb = taskWorkbench.querySelector('.checkbox');
-                if (cb) cb.textContent = '[✓]';
-            }
-        } else {
-            this.tutorialState.workbenchPlaced = false;
-            if (taskWorkbench) {
-                taskWorkbench.classList.remove('completed');
-                const cb = taskWorkbench.querySelector('.checkbox');
-                if (cb) cb.textContent = '[ ]';
-            }
+        tutorialUI.style.display = 'flex';
+        const activeChecklist = TUTORIAL_CHECKLISTS[currentIndex];
+        titleEl.textContent = activeChecklist.title;
+
+        // Check hunger/thirst experience event
+        if (this.player.hunger <= 80 || this.player.thirst <= 80) {
+            if (!this.state.tutorialEvents) this.state.tutorialEvents = {};
+            this.state.tutorialEvents['experiencedHungerThirst'] = true;
         }
 
-        const isEnclosed = this.checkEnclosure();
-        if (isEnclosed) {
-            this.tutorialState.enclosureComplete = true;
-            if (taskEnclosure) {
-                taskEnclosure.classList.add('completed');
-                const cb = taskEnclosure.querySelector('.checkbox');
-                if (cb) cb.textContent = '[✓]';
-            }
-        } else {
-            this.tutorialState.enclosureComplete = false;
-            if (taskEnclosure) {
-                taskEnclosure.classList.remove('completed');
-                const cb = taskEnclosure.querySelector('.checkbox');
-                if (cb) cb.textContent = '[ ]';
-            }
-        }
+        itemsEl.innerHTML = '';
+        let allCompleted = true;
 
-        if (this.tutorialState.woodCollected && this.tutorialState.workbenchPlaced && this.tutorialState.enclosureComplete) {
-            this.tutorialState.completed = true;
-            this.triggerCelebrationModal();
+        activeChecklist.tasks.forEach(task => {
+            let isTaskDone = false;
+
+            if (task.type === 'item_count') {
+                const count = this.inventory.getItemCount(task.item);
+                isTaskDone = count >= task.target;
+            } else if (task.type === 'building_placed') {
+                isTaskDone = this.state.placedBuildings.some(b => b.type === task.buildingType);
+            } else if (task.type === 'building_count') {
+                const count = this.state.placedBuildings.filter(b => b.type === task.buildingType).length;
+                isTaskDone = count >= task.target;
+            } else if (task.type === 'event') {
+                isTaskDone = !!(this.state.tutorialEvents && this.state.tutorialEvents[task.eventKey]);
+            }
+
+            if (!isTaskDone) allCompleted = false;
+
+            const li = document.createElement('li');
+            li.className = `checklist-item ${isTaskDone ? 'completed' : ''}`;
+            li.innerHTML = `<span class="checkbox">${isTaskDone ? '[✓]' : '[ ]'}</span> ${task.text}`;
+            itemsEl.appendChild(li);
+        });
+
+        if (allCompleted) {
+            const reward = activeChecklist.reward;
+            this.state.dosh = (this.state.dosh || 0) + reward;
+            this.showNotification(`Completed ${activeChecklist.title}! Awarded +${reward} Dosh!`);
+
+            this.state.tutorialIndex = currentIndex + 1;
+
+            if (this.state.tutorialIndex >= TUTORIAL_CHECKLISTS.length) {
+                // Final Completion Bonus
+                const finalBonus = 2000;
+                this.state.dosh += finalBonus;
+                this.showNotification(`🎉 All Tutorial Checklists Completed! Bonus: +${finalBonus} Dosh!`);
+                tutorialUI.style.display = 'none';
+            } else {
+                this.updateTutorialChecklist();
+            }
         }
     }
 
@@ -4556,16 +4641,19 @@ class ReserveGame {
         const pStoneCount = this.inventory.getItemCount('processedStone');
         const saplingCount = this.inventory.getItemCount('sapling');
 
-        if (woodCount >= bDef.woodCost &&
+        if (this.state.isCreativeMode || (
+            woodCount >= bDef.woodCost &&
             stoneCount >= bDef.stoneCost &&
             pStoneCount >= (bDef.processedStoneCost || 0) &&
-            saplingCount >= (bDef.saplingCost || 0)) {
+            saplingCount >= (bDef.saplingCost || 0))) {
 
-            this.inventory.consumeItem('wood', bDef.woodCost);
-            this.inventory.consumeItem('stone', bDef.stoneCost);
-            this.inventory.consumeItem('processedStone', bDef.processedStoneCost || 0);
-            if (bDef.saplingCost) {
-                this.inventory.consumeItem('sapling', bDef.saplingCost);
+            if (!this.state.isCreativeMode) {
+                this.inventory.consumeItem('wood', bDef.woodCost);
+                this.inventory.consumeItem('stone', bDef.stoneCost);
+                this.inventory.consumeItem('processedStone', bDef.processedStoneCost || 0);
+                if (bDef.saplingCost) {
+                    this.inventory.consumeItem('sapling', bDef.saplingCost);
+                }
             }
 
             const buildingObj = {
@@ -5015,6 +5103,9 @@ class ReserveGame {
         const elFunds = document.getElementById('stat-funds');
         if (elFunds) elFunds.textContent = `$${this.state.funds.toLocaleString()}`;
 
+        const elDosh = document.getElementById('stat-dosh');
+        if (elDosh) elDosh.textContent = `${(this.state.dosh || 0).toLocaleString()} Dosh`;
+
         const elClock = document.getElementById('digital-clock');
         if (elClock) elClock.textContent = this.getFormattedTime();
 
@@ -5176,9 +5267,10 @@ class ReserveGame {
             const stoneCount = this.inventory.getItemCount('stone');
             const pStoneCount = this.inventory.getItemCount('processedStone');
 
-            const canAfford = woodCount >= bDef.woodCost &&
+            const canAfford = this.state.isCreativeMode || (
+                              woodCount >= bDef.woodCost &&
                               stoneCount >= bDef.stoneCost &&
-                              pStoneCount >= (bDef.processedStoneCost || 0);
+                              pStoneCost >= (bDef.processedStoneCost || 0));
 
             const card = document.createElement('div');
             card.className = 'item-card';
@@ -5223,10 +5315,11 @@ class ReserveGame {
         campCard.className = 'item-card';
 
         if (nextCamp) {
-            const canAfford = this.state.funds >= nextCamp.cost &&
+            const canAfford = this.state.isCreativeMode || (
+                              this.state.funds >= nextCamp.cost &&
                               this.inventory.getItemCount('wood') >= nextCamp.woodCost &&
                               this.inventory.getItemCount('stone') >= (nextCamp.stoneCost || 0) &&
-                              this.inventory.getItemCount('processedStone') >= (nextCamp.processedStoneCost || 0);
+                              this.inventory.getItemCount('processedStone') >= (nextCamp.processedStoneCost || 0));
 
             campCard.innerHTML = `
                 <div class="card-header">
@@ -5249,12 +5342,14 @@ class ReserveGame {
             const btn = campCard.querySelector('.action-btn');
             if (btn && canAfford) {
                 btn.addEventListener('click', () => {
-                    this.state.funds -= nextCamp.cost;
-                    this.weeklyStats.upgradesSpent += nextCamp.cost;
-                    this.weeklyStats.expenses += nextCamp.cost;
-                    this.inventory.consumeItem('wood', nextCamp.woodCost);
-                    this.inventory.consumeItem('stone', nextCamp.stoneCost || 0);
-                    this.inventory.consumeItem('processedStone', nextCamp.processedStoneCost || 0);
+                    if (!this.state.isCreativeMode) {
+                        this.state.funds -= nextCamp.cost;
+                        this.weeklyStats.upgradesSpent += nextCamp.cost;
+                        this.weeklyStats.expenses += nextCamp.cost;
+                        this.inventory.consumeItem('wood', nextCamp.woodCost);
+                        this.inventory.consumeItem('stone', nextCamp.stoneCost || 0);
+                        this.inventory.consumeItem('processedStone', nextCamp.processedStoneCost || 0);
+                    }
                     this.state.campTier += 1;
                     this.updateUI();
                 });
@@ -5280,10 +5375,11 @@ class ReserveGame {
         fenceCard.className = 'item-card';
 
         if (nextFence) {
-            const canAfford = this.state.funds >= nextFence.cost &&
+            const canAfford = this.state.isCreativeMode || (
+                              this.state.funds >= nextFence.cost &&
                               this.inventory.getItemCount('wood') >= nextFence.woodCost &&
                               this.inventory.getItemCount('stone') >= (nextFence.stoneCost || 0) &&
-                              this.inventory.getItemCount('processedStone') >= (nextFence.processedStoneCost || 0);
+                              this.inventory.getItemCount('processedStone') >= (nextFence.processedStoneCost || 0));
 
             fenceCard.innerHTML = `
                 <div class="card-header">
@@ -5306,12 +5402,14 @@ class ReserveGame {
             const btn = fenceCard.querySelector('.action-btn');
             if (btn && canAfford) {
                 btn.addEventListener('click', () => {
-                    this.state.funds -= nextFence.cost;
-                    this.weeklyStats.upgradesSpent += nextFence.cost;
-                    this.weeklyStats.expenses += nextFence.cost;
-                    this.inventory.consumeItem('wood', nextFence.woodCost);
-                    this.inventory.consumeItem('stone', nextFence.stoneCost || 0);
-                    this.inventory.consumeItem('processedStone', nextFence.processedStoneCost || 0);
+                    if (!this.state.isCreativeMode) {
+                        this.state.funds -= nextFence.cost;
+                        this.weeklyStats.upgradesSpent += nextFence.cost;
+                        this.weeklyStats.expenses += nextFence.cost;
+                        this.inventory.consumeItem('wood', nextFence.woodCost);
+                        this.inventory.consumeItem('stone', nextFence.stoneCost || 0);
+                        this.inventory.consumeItem('processedStone', nextFence.processedStoneCost || 0);
+                    }
                     this.state.fenceTier += 1;
                     this.updateUI();
                 });
