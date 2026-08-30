@@ -13,6 +13,18 @@
     <!-- UI Overlay Layer -->
     <div id="ui-overlay" class="ui-overlay">
 
+        <!-- Top-Left Player Survival HUD -->
+        <div class="survival-hud">
+            <div class="survival-bar-group">
+                <div class="survival-label">❤️ HP</div>
+                <div class="survival-bar hp-bar"><div id="player-hp-fill" class="bar-fill hp-fill" style="width: 100%;"></div></div>
+            </div>
+            <div class="survival-bar-group">
+                <div class="survival-label">💧 Thirst</div>
+                <div class="survival-bar thirst-bar"><div id="player-thirst-fill" class="bar-fill thirst-fill" style="width: 100%;"></div></div>
+            </div>
+        </div>
+
         <!-- Top HUD Header -->
         <header class="top-hud">
             <div class="hud-brand">
@@ -29,7 +41,7 @@
                 <div id="day-progress-bar" class="day-progress-fill"></div>
             </div>
 
-            <!-- Quick Stats Bar -->
+            <!-- Quick Stats Bar (Wood and Stone removed) -->
             <div class="stats-ribbon">
                 <div class="stat-pill">
                     <span class="stat-label">Funds</span>
@@ -44,14 +56,6 @@
                     <span id="stat-capacity" class="stat-value">0 / 5</span>
                 </div>
                 <div class="stat-pill">
-                    <span class="stat-label">Wood</span>
-                    <span id="stat-wood" class="stat-value">30</span>
-                </div>
-                <div class="stat-pill">
-                    <span class="stat-label">Stone</span>
-                    <span id="stat-stone" class="stat-value">15</span>
-                </div>
-                <div class="stat-pill">
                     <span class="stat-label">P-Stone</span>
                     <span id="stat-pstone" class="stat-value">0</span>
                 </div>
@@ -61,48 +65,74 @@
         <!-- Notification / Status Banner -->
         <div id="status-banner" class="status-banner hidden"></div>
 
-        <!-- Right Side Hover-Slide Menu Container -->
-        <aside class="side-menu-container">
-            <!-- Animals Slide Drawer -->
-            <div class="slide-menu-item">
-                <div class="menu-tab">🦁 <span>Animals</span></div>
-                <div class="menu-panel">
-                    <h3>Marketplace Animals</h3>
+        <!-- Consolidated Master Right Sidebar -->
+        <aside class="master-sidebar">
+            <div class="sidebar-strip-handle">
+                <span>📋 MANAGEMENT MENU</span>
+            </div>
+            <div class="sidebar-content">
+                <!-- Animals Section -->
+                <details class="sidebar-section" open>
+                    <summary class="section-header">🦁 Marketplace Animals</summary>
                     <div id="animal-market-grid" class="panel-grid"></div>
-                </div>
-            </div>
+                </details>
 
-            <!-- Rangers Slide Drawer -->
-            <div class="slide-menu-item">
-                <div class="menu-tab">🤠 <span>Rangers</span></div>
-                <div class="menu-panel">
-                    <h3>Recruit Rangers</h3>
+                <!-- Rangers Section -->
+                <details class="sidebar-section">
+                    <summary class="section-header">🤠 Recruit Rangers</summary>
                     <div id="ranger-hiring-grid" class="panel-grid"></div>
-                </div>
-            </div>
+                </details>
 
-            <!-- Crafting Slide Drawer -->
-            <div class="slide-menu-item">
-                <div class="menu-tab">🔨 <span>Crafting</span></div>
-                <div class="menu-panel">
-                    <h3>Crafting & Building</h3>
+                <!-- Crafting Section -->
+                <details class="sidebar-section">
+                    <summary class="section-header">🔨 Crafting & Building</summary>
                     <div id="crafting-grid" class="panel-grid"></div>
-                </div>
-            </div>
+                </details>
 
-            <!-- Upgrades Slide Drawer -->
-            <div class="slide-menu-item">
-                <div class="menu-tab">🏗️ <span>Upgrades</span></div>
-                <div class="menu-panel">
-                    <h3>Reserve Upgrades</h3>
+                <!-- Upgrades Section -->
+                <details class="sidebar-section">
+                    <summary class="section-header">🏗️ Reserve Upgrades</summary>
                     <div id="upgrades-grid" class="panel-grid"></div>
-                </div>
+                </details>
             </div>
         </aside>
 
-        <!-- Bottom-Left Circular Minimap & Fog Widget -->
+        <!-- Persistent 5-Slot Hotbar (Bottom Center) -->
+        <div id="hotbar-container" class="hotbar-container">
+            <div class="hotbar-slot active" data-slot="0">
+                <span class="hotbar-key">1</span>
+                <div class="hotbar-icon"></div>
+                <span class="hotbar-count"></span>
+            </div>
+            <div class="hotbar-slot" data-slot="1">
+                <span class="hotbar-key">2</span>
+                <div class="hotbar-icon"></div>
+                <span class="hotbar-count"></span>
+            </div>
+            <div class="hotbar-slot" data-slot="2">
+                <span class="hotbar-key">3</span>
+                <div class="hotbar-icon"></div>
+                <span class="hotbar-count"></span>
+            </div>
+            <div class="hotbar-slot" data-slot="3">
+                <span class="hotbar-key">4</span>
+                <div class="hotbar-icon"></div>
+                <span class="hotbar-count"></span>
+            </div>
+            <div class="hotbar-slot" data-slot="4">
+                <span class="hotbar-key">5</span>
+                <div class="hotbar-icon"></div>
+                <span class="hotbar-count"></span>
+            </div>
+        </div>
+
+        <!-- Bottom-Left Circular Minimap Widget with Zoom Controls -->
         <div class="minimap-container">
             <canvas id="minimapCanvas" width="160" height="160"></canvas>
+            <div class="minimap-controls">
+                <button id="minimap-zoom-in" title="Zoom In">+</button>
+                <button id="minimap-zoom-out" title="Zoom Out">-</button>
+            </div>
             <div class="minimap-label">MINIMAP</div>
         </div>
 
@@ -151,13 +181,13 @@
         <div id="inventory-modal" class="modal-backdrop hidden">
             <div class="modal-card inventory-card">
                 <div class="modal-header">
-                    <h3>🎒 Player Backpack (20 Slots)</h3>
+                    <h3>🎒 Player Inventory & Hotbar (25 Slots)</h3>
                     <button id="close-inventory-btn" class="close-btn">&times;</button>
                 </div>
                 <div class="modal-body">
                     <div id="inventory-grid" class="inventory-grid"></div>
                     <div class="inventory-footer">
-                        <span>Tip: Resources stack up to 100 per slot. Press <strong>[E]</strong> or <strong>[ESC]</strong> to close.</span>
+                        <span>Tip: Slots 1-20 are Backpack, Slots 21-25 are Hotbar. Resources stack up to 100 per slot. Press <strong>[E]</strong> or <strong>[ESC]</strong> to close.</span>
                     </div>
                 </div>
             </div>
