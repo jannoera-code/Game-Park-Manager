@@ -186,6 +186,7 @@ const BUILDINGS_DATA = [
         processedStoneCost: 0,
         width: 60,
         height: 60,
+        rotation: 0,
         description: 'Crafting bench that unlocks tools, structures, fences, and processing stations.'
     }
 ];
@@ -202,6 +203,7 @@ const WORKBENCH_CRAFTABLES = [
         saplingCost: 1,
         width: 30,
         height: 30,
+        rotation: 0,
         description: 'Placeable light source that illuminates the surrounding area during the night phase.'
     },
     {
@@ -214,6 +216,7 @@ const WORKBENCH_CRAFTABLES = [
         processedStoneCost: 0,
         width: 96,
         height: 96,
+        rotation: 0,
         description: 'Provides operational staging post for hired rangers to spawn, rest, and patrol.'
     },
     {
@@ -226,6 +229,7 @@ const WORKBENCH_CRAFTABLES = [
         processedStoneCost: 0,
         width: 70,
         height: 70,
+        rotation: 0,
         description: 'Consumes Wood fuel to smelt Stone into Processed Stone over time.'
     },
     {
@@ -239,6 +243,7 @@ const WORKBENCH_CRAFTABLES = [
         processedStoneCost: 0,
         width: 60,
         height: 60,
+        rotation: 0,
         description: 'Basic wooden perimeter fence segment.'
     },
     {
@@ -252,6 +257,7 @@ const WORKBENCH_CRAFTABLES = [
         processedStoneCost: 0,
         width: 70,
         height: 70,
+        rotation: 0,
         description: 'Secure access gate for staff entrance and exit.'
     },
     {
@@ -264,6 +270,7 @@ const WORKBENCH_CRAFTABLES = [
         processedStoneCost: 0,
         width: 70,
         height: 70,
+        rotation: 0,
         description: 'Converts raw Wood into Braai Wood fuel.'
     },
     {
@@ -277,6 +284,7 @@ const WORKBENCH_CRAFTABLES = [
         processedStoneCost: 5,
         width: 70,
         height: 70,
+        rotation: 0,
         description: 'African BBQ grill that cooks Raw Meat using Braai Wood.'
     },
     {
@@ -327,6 +335,7 @@ const WORKBENCH_CRAFTABLES = [
         processedStoneCost: 0,
         width: 40,
         height: 40,
+        rotation: 0,
         description: 'Feeding bowl for Jock. Insert Dog Meals to keep your loyal companion fed.'
     }
 ];
