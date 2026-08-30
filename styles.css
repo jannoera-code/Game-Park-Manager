@@ -1,10 +1,10 @@
-/* Full-Screen Tactical UI Overlay & Styling for African Wildlife Reserve Manager */
+/* Translucent Glassmorphism UI & Fluid Slide-out Menus for African Wildlife Reserve Manager */
 
 :root {
     --bg-main: #0d1215;
-    --bg-glass: rgba(24, 34, 38, 0.85);
-    --bg-glass-card: rgba(30, 39, 44, 0.9);
-    --bg-glass-hover: rgba(42, 54, 63, 0.95);
+    --bg-glass: rgba(18, 25, 30, 0.65);
+    --bg-glass-card: rgba(28, 38, 45, 0.75);
+    --bg-glass-hover: rgba(40, 55, 66, 0.85);
     --accent-gold: #f39c12;
     --accent-green: #2ecc71;
     --accent-red: #e74c3c;
@@ -12,8 +12,8 @@
     --accent-purple: #9b59b6;
     --text-main: #f0f4f8;
     --text-muted: #95a5a6;
-    --border-color: rgba(255, 255, 255, 0.12);
-    --border-highlight: rgba(243, 156, 18, 0.5);
+    --border-color: rgba(255, 255, 255, 0.15);
+    --border-highlight: rgba(243, 156, 18, 0.6);
     --font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 }
 
@@ -52,33 +52,35 @@ canvas#reserveCanvas {
     left: 0;
     width: 100vw;
     height: 100vh;
-    pointer-events: none; /* Let clicks pass through to canvas by default */
+    pointer-events: none;
     z-index: 10;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
 }
 
-/* Enable pointer events for interactive UI elements */
+/* Interactive components enable pointer events */
 .top-hud,
-.side-dock,
-.floating-panel-container,
+.side-menu-container,
+.minimap-container,
 .modal-card,
-.status-banner {
+.status-banner,
+.controls-guide {
     pointer-events: auto;
 }
 
 /* Top HUD Header */
 .top-hud {
     background: var(--bg-glass);
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
     border-bottom: 1px solid var(--border-color);
     padding: 10px 20px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 15px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
 }
 
 .hud-brand {
@@ -101,6 +103,30 @@ canvas#reserveCanvas {
     font-weight: bold;
     font-size: 0.85rem;
     border: 1px solid var(--accent-gold);
+}
+
+/* Ranger Housing Warning Badge */
+.warning-badge {
+    background: rgba(231, 76, 60, 0.25);
+    color: var(--accent-red);
+    border: 1px solid var(--accent-red);
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    animation: pulseWarning 1.5s infinite alternate;
+}
+
+.warning-badge.hidden {
+    display: none;
+}
+
+@keyframes pulseWarning {
+    0% { transform: scale(1); opacity: 0.8; }
+    100% { transform: scale(1.05); opacity: 1; }
 }
 
 .day-progress-container {
@@ -129,6 +155,7 @@ canvas#reserveCanvas {
 
 .stat-pill {
     background: var(--bg-glass-card);
+    backdrop-filter: blur(5px);
     border: 1px solid var(--border-color);
     padding: 6px 12px;
     border-radius: 8px;
@@ -173,138 +200,114 @@ canvas#reserveCanvas {
     display: none;
 }
 
-/* Side Dock Menu */
-.side-dock {
+/* Fluid Hover-Slide Side Menu Dock */
+.side-menu-container {
     position: absolute;
-    right: 15px;
+    right: 0;
     top: 50%;
     transform: translateY(-50%);
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    background: var(--bg-glass);
-    backdrop-filter: blur(10px);
-    border: 1px solid var(--border-color);
-    padding: 10px;
-    border-radius: 16px;
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5);
+    gap: 10px;
+    z-index: 50;
 }
 
-.dock-btn {
-    background: var(--bg-glass-card);
+.slide-menu-item {
+    position: relative;
+    display: flex;
+    flex-direction: row-reverse;
+    align-items: flex-start;
+    /* Translate menu panel out off-screen by 300px */
+    transform: translateX(300px);
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Smooth slide out on hover */
+.slide-menu-item:hover {
+    transform: translateX(0);
+}
+
+.menu-tab {
+    width: 60px;
+    height: 70px;
+    background: var(--bg-glass);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
     border: 1px solid var(--border-color);
-    border-radius: 12px;
-    color: var(--text-main);
-    padding: 10px;
-    cursor: pointer;
+    border-right: none;
+    border-radius: 12px 0 0 12px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    width: 60px;
-    transition: all 0.2s ease;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1.2rem;
+    color: var(--accent-gold);
+    box-shadow: -4px 4px 15px rgba(0, 0, 0, 0.3);
+    transition: background 0.2s ease;
+    flex-shrink: 0;
 }
 
-.dock-btn:hover {
+.menu-tab span {
+    font-size: 0.55rem;
+    color: var(--text-main);
+    margin-top: 2px;
+}
+
+.slide-menu-item:hover .menu-tab {
     background: var(--bg-glass-hover);
     border-color: var(--accent-gold);
-    transform: translateX(-4px);
 }
 
-.dock-btn.active {
-    border-color: var(--accent-gold);
-    background: rgba(243, 156, 18, 0.2);
-}
-
-.dock-icon {
-    font-size: 1.5rem;
-}
-
-.dock-label {
-    font-size: 0.65rem;
-    margin-top: 4px;
-    color: var(--text-muted);
-}
-
-/* Floating Collapsible Drawer Panel */
-.floating-panel-container {
-    position: absolute;
-    right: 90px;
-    top: 80px;
-    bottom: 50px;
-    width: 360px;
+.menu-panel {
+    width: 300px;
+    height: 440px;
     background: var(--bg-glass);
-    backdrop-filter: blur(12px);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
     border: 1px solid var(--border-color);
-    border-radius: 16px;
-    box-shadow: -5px 10px 30px rgba(0, 0, 0, 0.6);
+    border-radius: 0 0 0 12px;
+    padding: 14px;
     display: flex;
     flex-direction: column;
+    box-shadow: -8px 8px 30px rgba(0, 0, 0, 0.5);
     overflow: hidden;
-    transition: opacity 0.25s ease, transform 0.25s ease;
+    flex-shrink: 0;
 }
 
-.floating-panel-container.hidden {
-    display: none;
-}
-
-.panel-header {
-    padding: 14px 18px;
-    background: rgba(0, 0, 0, 0.25);
-    border-bottom: 1px solid var(--border-color);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.panel-header h2 {
-    font-size: 1.1rem;
+.menu-panel h3 {
+    font-size: 1.05rem;
     color: var(--accent-gold);
-}
-
-.close-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    font-size: 1.5rem;
-    cursor: pointer;
-    transition: color 0.2s;
-    line-height: 1;
-}
-
-.close-btn:hover {
-    color: var(--accent-red);
-}
-
-.panel-content-scroll {
-    flex: 1;
-    padding: 14px;
-    overflow-y: auto;
-}
-
-.panel-section.hidden {
-    display: none;
+    margin-bottom: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-color);
 }
 
 /* Panel Items Grid */
 .panel-grid {
+    flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
+    overflow-y: auto;
+    padding-right: 4px;
 }
 
 .item-card {
     background: var(--bg-glass-card);
+    backdrop-filter: blur(5px);
     border: 1px solid var(--border-color);
     border-radius: 10px;
-    padding: 12px;
+    padding: 10px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     transition: border-color 0.2s ease, transform 0.2s ease;
 }
 
 .item-card:hover {
     border-color: var(--border-highlight);
+    background: var(--bg-glass-hover);
 }
 
 .card-header {
@@ -314,26 +317,26 @@ canvas#reserveCanvas {
 }
 
 .card-icon {
-    font-size: 1.8rem;
+    font-size: 1.6rem;
     background: rgba(0, 0, 0, 0.3);
-    padding: 6px;
+    padding: 4px;
     border-radius: 8px;
-    width: 42px;
-    height: 42px;
+    width: 38px;
+    height: 38px;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
 .card-thumb-img {
-    width: 32px;
-    height: 32px;
+    width: 30px;
+    height: 30px;
     object-fit: contain;
     image-rendering: pixelated;
 }
 
-.card-title-group h3 {
-    font-size: 0.95rem;
+.card-title-group h4 {
+    font-size: 0.9rem;
     color: var(--text-main);
 }
 
@@ -343,7 +346,7 @@ canvas#reserveCanvas {
 }
 
 .card-body {
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     color: #cbd5e1;
     line-height: 1.3;
 }
@@ -351,7 +354,7 @@ canvas#reserveCanvas {
 .card-stats {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 5px;
 }
 
 .badge {
@@ -367,13 +370,13 @@ canvas#reserveCanvas {
 
 .action-btn {
     width: 100%;
-    padding: 8px 12px;
+    padding: 7px 10px;
     border: none;
     border-radius: 6px;
     background: var(--accent-gold);
     color: #12181b;
     font-weight: bold;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     cursor: pointer;
     transition: background-color 0.2s, opacity 0.2s;
     display: flex;
@@ -405,15 +408,51 @@ canvas#reserveCanvas {
     background: #27ae60;
 }
 
-/* Furnace UI Modal */
+/* Minimap UI Widget in Bottom-Left Corner */
+.minimap-container {
+    position: absolute;
+    bottom: 45px;
+    left: 20px;
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    border: 3px solid var(--accent-gold);
+    overflow: hidden;
+    background: #000;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7);
+    z-index: 40;
+}
+
+#minimapCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.minimap-label {
+    position: absolute;
+    bottom: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.6rem;
+    font-weight: bold;
+    color: var(--accent-gold);
+    background: rgba(0, 0, 0, 0.7);
+    padding: 1px 6px;
+    border-radius: 6px;
+    pointer-events: none;
+}
+
+/* Modal Backdrops & Cards */
 .modal-backdrop {
     position: fixed;
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(4px);
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -426,8 +465,10 @@ canvas#reserveCanvas {
 
 .modal-card {
     width: 90%;
-    max-width: 480px;
+    max-width: 500px;
     background: var(--bg-glass);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
     border: 1px solid var(--accent-gold);
     border-radius: 16px;
     box-shadow: 0 10px 35px rgba(0, 0, 0, 0.7);
@@ -436,7 +477,7 @@ canvas#reserveCanvas {
 
 .modal-header {
     padding: 14px 20px;
-    background: rgba(0, 0, 0, 0.3);
+    background: rgba(0, 0, 0, 0.35);
     border-bottom: 1px solid var(--border-color);
     display: flex;
     justify-content: space-between;
@@ -445,6 +486,20 @@ canvas#reserveCanvas {
 
 .modal-header h3 {
     color: var(--accent-gold);
+    font-size: 1.1rem;
+}
+
+.close-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.5rem;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.close-btn:hover {
+    color: var(--accent-red);
 }
 
 .modal-body {
@@ -454,6 +509,7 @@ canvas#reserveCanvas {
     gap: 16px;
 }
 
+/* Furnace Specific Modal */
 .furnace-status-row {
     display: flex;
     align-items: center;
@@ -508,10 +564,123 @@ canvas#reserveCanvas {
     color: var(--text-main);
 }
 
+/* 20-Slot Inventory Grid Modal */
+.inventory-card {
+    max-width: 580px;
+}
+
+.inventory-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+}
+
+.inventory-slot {
+    width: 90px;
+    height: 90px;
+    background: var(--bg-glass-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.inventory-slot:hover {
+    border-color: var(--accent-gold);
+    background: var(--bg-glass-hover);
+}
+
+.inventory-slot.empty {
+    opacity: 0.5;
+}
+
+.slot-icon {
+    font-size: 1.8rem;
+}
+
+.slot-item-name {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.slot-count-badge {
+    position: absolute;
+    bottom: 4px;
+    right: 6px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: var(--accent-gold);
+    background: rgba(0, 0, 0, 0.6);
+    padding: 1px 5px;
+    border-radius: 4px;
+}
+
+.inventory-footer {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-align: center;
+    border-top: 1px solid var(--border-color);
+    padding-top: 10px;
+}
+
+/* Forgotten Ranger Crate Modal */
+.crate-card {
+    max-width: 550px;
+}
+
+.crate-subtitle {
+    font-size: 0.9rem;
+    color: #e2e8f0;
+    text-align: center;
+}
+
+.crate-choices-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+
+.crate-choice-card {
+    background: var(--bg-glass-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: border-color 0.2s ease, transform 0.2s ease, background 0.2s ease;
+}
+
+.crate-choice-card:hover {
+    border-color: var(--accent-gold);
+    transform: translateY(-4px);
+    background: var(--bg-glass-hover);
+}
+
+.crate-choice-title {
+    font-size: 0.95rem;
+    font-weight: bold;
+    color: var(--accent-gold);
+}
+
+.crate-choice-desc {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
 /* Controls Guide Footer Overlay */
 .controls-guide {
     background: var(--bg-glass);
-    backdrop-filter: blur(6px);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
     border-top: 1px solid var(--border-color);
     padding: 6px 20px;
     display: flex;
@@ -520,7 +689,7 @@ canvas#reserveCanvas {
     gap: 20px;
     font-size: 0.75rem;
     color: var(--text-muted);
-    pointer-events: auto;
+    z-index: 30;
 }
 
 /* Responsive UI Adjustments */
@@ -528,15 +697,21 @@ canvas#reserveCanvas {
     .stats-ribbon {
         display: none;
     }
-    .floating-panel-container {
-        right: 15px;
-        left: 15px;
-        width: auto;
-        top: auto;
-        bottom: 60px;
-        height: 320px;
+    .slide-menu-item {
+        transform: translateX(260px);
     }
-    .furnace-slots {
+    .menu-panel {
+        width: 260px;
+        height: 380px;
+    }
+    .inventory-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+    .inventory-slot {
+        width: 70px;
+        height: 70px;
+    }
+    .crate-choices-grid {
         grid-template-columns: 1fr;
     }
 }
