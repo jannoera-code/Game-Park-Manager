@@ -710,9 +710,10 @@ class DogBowl {
         return false;
     }
 
-    render(ctx) {
+    render(ctx, rotation = 0) {
         ctx.save();
         ctx.translate(this.x, this.y);
+        if (rotation) ctx.rotate((rotation * Math.PI) / 180);
 
         ctx.fillStyle = 'rgba(0,0,0,0.3)';
         ctx.beginPath();
@@ -1058,6 +1059,7 @@ class Player {
         this.isMovementLocked = false;
 
         // Player Survival Stats
+        this.baseMaxHp = 100;
         this.hp = 100;
         this.maxHp = 100;
         this.thirst = 100;
@@ -1067,6 +1069,22 @@ class Player {
         this.thirstDepleteRate = 0.6; // Halved Thirst depletion rate
         this.hungerDepleteRate = 0.3; // Hunger trickles down even slower than Thirst
         this.starveHpDepleteRate = 2.5; // HP loss per second when Thirst or Hunger is 0
+
+        // Tiered Survival Timers (in seconds)
+        this.starvingTimer = 0;
+        this.dehydratedTimer = 0;
+
+        // Base speed multiplier (modified by buffs)
+        this.buffSpeedMult = 1.0;
+        this.speedPenaltyMult = 1.0;
+    }
+
+    get speedMult() {
+        return this.buffSpeedMult * this.speedPenaltyMult;
+    }
+
+    set speedMult(val) {
+        this.buffSpeedMult = val;
     }
 
     get speed() {
@@ -1112,10 +1130,20 @@ class Player {
         }
 
         for (const b of placedBuildings) {
-            const bx1 = b.x - b.width / 2;
-            const bx2 = b.x + b.width / 2;
-            const by1 = b.y - b.height / 2;
-            const by2 = b.y + b.height / 2;
+            // Player may only pass through explicitly placed "fence gate" entities
+            if (b.type === 'fence_gate') {
+                continue;
+            }
+
+            const rot = b.rotation || 0;
+            const isRotated = (rot === 90 || rot === 270);
+            const bw = isRotated ? b.height : b.width;
+            const bh = isRotated ? b.width : b.height;
+
+            const bx1 = b.x - bw / 2;
+            const bx2 = b.x + bw / 2;
+            const by1 = b.y - bh / 2;
+            const by2 = b.y + bh / 2;
 
             const closestX = Math.max(bx1, Math.min(px, bx2));
             const closestY = Math.max(by1, Math.min(py, by2));
@@ -1139,8 +1167,58 @@ class Player {
         this.thirst = Math.max(0, this.thirst - this.thirstDepleteRate * dt);
         this.hunger = Math.max(0, this.hunger - this.hungerDepleteRate * dt);
 
+        // Track time spent in base starving/dehydrated states
+        if (this.hunger <= 0) {
+            this.starvingTimer += dt;
+        } else {
+            this.starvingTimer = 0;
+        }
+
+        if (this.thirst <= 0) {
+            this.dehydratedTimer += dt;
+        } else {
+            this.dehydratedTimer = 0;
+        }
+
+        // Determine critical status threshold: 2 in-game days = 2 * 300s = 600s
+        const criticalThreshold = 600;
+
+        let maxHpPenalty = 0;
+        let speedPenalty = 0;
+
+        if (this.hunger <= 0) {
+            if (this.starvingTimer >= criticalThreshold) {
+                maxHpPenalty += 0.50;
+                speedPenalty += 0.20;
+            } else {
+                maxHpPenalty += 0.25;
+                speedPenalty += 0.10;
+            }
+        }
+
+        if (this.thirst <= 0) {
+            if (this.dehydratedTimer >= criticalThreshold) {
+                maxHpPenalty += 0.50;
+                speedPenalty += 0.20;
+            } else {
+                maxHpPenalty += 0.25;
+                speedPenalty += 0.10;
+            }
+        }
+
+        this.maxHp = Math.max(0, Math.round(this.baseMaxHp * (1 - maxHpPenalty)));
+        this.speedPenaltyMult = Math.max(0, 1 - speedPenalty);
+        this.hp = Math.min(this.hp, this.maxHp);
+
         if (this.thirst <= 0 || this.hunger <= 0) {
             this.hp = Math.max(0, this.hp - this.starveHpDepleteRate * dt);
+        }
+
+        // Trigger Death Sequence if HP <= 0 or Max HP <= 0
+        if (this.hp <= 0 || this.maxHp <= 0) {
+            if (window.game) {
+                window.game.handlePlayerDeath();
+            }
         }
 
         if (this.isMovementLocked) {
@@ -1157,25 +1235,57 @@ class Player {
         if (keys.a || keys.ArrowLeft) dx -= 1;
         if (keys.d || keys.ArrowRight) dx += 1;
 
-        if (dx !== 0 && dy !== 0) {
-            dx *= Math.SQRT1_2;
-            dy *= Math.SQRT1_2;
+        const len = Math.hypot(dx, dy);
+        if (len > 0) {
+            dx /= len;
+            dy /= len;
         }
 
-        const moveX = dx * this.speed * dt;
-        const moveY = dy * this.speed * dt;
+        const totalDist = Math.hypot(dx * this.speed * dt, dy * this.speed * dt);
+        const subSteps = Math.max(1, Math.ceil(totalDist / 6));
+        const subDt = dt / subSteps;
 
-        if (moveX !== 0) {
-            const newX = this.x + moveX;
-            if (!this.checkCollision(newX, this.y, resourceNodes, placedBuildings, hqBounds)) {
-                this.x = newX;
+        for (let step = 0; step < subSteps; step++) {
+            const stepX = dx * this.speed * subDt;
+            const stepY = dy * this.speed * subDt;
+
+            let movedX = false;
+            let movedY = false;
+
+            if (stepX !== 0) {
+                const newX = this.x + stepX;
+                if (!this.checkCollision(newX, this.y, resourceNodes, placedBuildings, hqBounds)) {
+                    this.x = newX;
+                    movedX = true;
+                }
             }
-        }
 
-        if (moveY !== 0) {
-            const newY = this.y + moveY;
-            if (!this.checkCollision(this.x, newY, resourceNodes, placedBuildings, hqBounds)) {
-                this.y = newY;
+            if (stepY !== 0) {
+                const newY = this.y + stepY;
+                if (!this.checkCollision(this.x, newY, resourceNodes, placedBuildings, hqBounds)) {
+                    this.y = newY;
+                    movedY = true;
+                }
+            }
+
+            // Corner nudging if movement along desired axis was blocked by a corner tip
+            if (!movedX && stepX !== 0 && !movedY) {
+                for (const nudgeY of [2, -2, 4, -4]) {
+                    if (!this.checkCollision(this.x + stepX, this.y + nudgeY, resourceNodes, placedBuildings, hqBounds)) {
+                        this.x += stepX;
+                        this.y += nudgeY * 0.5;
+                        break;
+                    }
+                }
+            }
+            if (!movedY && stepY !== 0 && !movedX) {
+                for (const nudgeX of [2, -2, 4, -4]) {
+                    if (!this.checkCollision(this.x + nudgeX, this.y + stepY, resourceNodes, placedBuildings, hqBounds)) {
+                        this.x += nudgeX * 0.5;
+                        this.y += stepY;
+                        break;
+                    }
+                }
             }
         }
 
@@ -1914,9 +2024,10 @@ class Braai {
         }
     }
 
-    render(ctx, images) {
+    render(ctx, images, rotation = 0) {
         ctx.save();
         ctx.translate(this.x, this.y);
+        if (rotation) ctx.rotate((rotation * Math.PI) / 180);
 
         const braaiImg = images ? images['braai.png'] : null;
         if (braaiImg && braaiImg.complete) {
@@ -1989,9 +2100,10 @@ class Furnace {
         }
     }
 
-    render(ctx) {
+    render(ctx, rotation = 0) {
         ctx.save();
         ctx.translate(this.x, this.y);
+        if (rotation) ctx.rotate((rotation * Math.PI) / 180);
 
         ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
         ctx.beginPath();
@@ -2187,6 +2299,44 @@ class ReserveGame {
         this.startRenderLoop();
     }
 
+    handlePlayerDeath() {
+        const deathX = this.player.x;
+        const deathY = this.player.y;
+
+        // Empty player inventory array and spawn items as ground entities at death X/Y coordinates
+        if (this.inventory && this.inventory.slots) {
+            this.inventory.slots.forEach((slot, idx) => {
+                if (slot.type && slot.count > 0) {
+                    const dropX = deathX + (Math.random() - 0.5) * 40;
+                    const dropY = deathY + (Math.random() - 0.5) * 40;
+                    this.droppedItems.push(new DroppedItem(`drop_death_${Date.now()}_${idx}_${Math.floor(Math.random() * 1000)}`, slot.type, slot.count, dropX, dropY));
+                    slot.type = null;
+                    slot.count = 0;
+                    slot.name = null;
+                }
+            });
+        }
+
+        // Reset player stats/states
+        this.player.hunger = 100;
+        this.player.thirst = 100;
+        this.player.starvingTimer = 0;
+        this.player.dehydratedTimer = 0;
+        this.player.baseMaxHp = 100;
+        this.player.maxHp = 100;
+        this.player.hp = 100;
+        this.player.speedPenaltyMult = 1.0;
+
+        // Teleport coordinates to "Reserve HQ" center
+        const hqCenterX = this.hq.x + this.hq.width / 2;
+        const hqCenterY = this.hq.y + this.hq.height / 2;
+        this.player.x = hqCenterX;
+        this.player.y = hqCenterY;
+
+        this.showNotification("You collapsed! Items dropped on ground and teleported to Reserve HQ.");
+        this.updateUI();
+    }
+
     findNearestUnrevealedChunk() {
         const hqChunkX = Math.floor((this.hq.x + this.hq.width / 2) / 1000);
         const hqChunkY = Math.floor((this.hq.y + this.hq.height / 2) / 1000);
@@ -2250,6 +2400,12 @@ class ReserveGame {
             if (['1', '2', '3', '4', '5'].includes(e.key)) {
                 this.activeHotbarIndex = parseInt(e.key, 10) - 1;
                 this.updateHotbarUI();
+            }
+            if (e.key === 'r' || e.key === 'R') {
+                if (this.placementMode.active) {
+                    this.placementMode.rotation = ((this.placementMode.rotation || 0) + 90) % 360;
+                    this.updatePlacementCursor();
+                }
             }
             if (e.key === 'e' || e.key === 'E') {
                 this.toggleInventoryModal();
@@ -4331,9 +4487,10 @@ class ReserveGame {
             buildingDef: buildingDef,
             gridX: 0,
             gridY: 0,
+            rotation: buildingDef.rotation || 0,
             valid: false
         };
-        this.showNotification(`Placing ${buildingDef.name}. Click inside Reserve to build, ESC to cancel.`);
+        this.showNotification(`Placing ${buildingDef.name}. Click inside Reserve to build, [R] to rotate, ESC to cancel.`);
     }
 
     cancelPlacement() {
@@ -4348,14 +4505,19 @@ class ReserveGame {
         if (!this.placementMode.active || !this.placementMode.buildingDef) return;
 
         const bDef = this.placementMode.buildingDef;
-        const gx = Math.floor(this.mouse.worldX / this.gridSize) * this.gridSize + bDef.width / 2;
-        const gy = Math.floor(this.mouse.worldY / this.gridSize) * this.gridSize + bDef.height / 2;
+        const rot = this.placementMode.rotation || 0;
+        const isRotated = (rot === 90 || rot === 270);
+        const bw = isRotated ? bDef.height : bDef.width;
+        const bh = isRotated ? bDef.width : bDef.height;
+
+        const gx = Math.floor(this.mouse.worldX / this.gridSize) * this.gridSize + bw / 2;
+        const gy = Math.floor(this.mouse.worldY / this.gridSize) * this.gridSize + bh / 2;
 
         this.placementMode.gridX = gx;
         this.placementMode.gridY = gy;
 
-        const halfW = bDef.width / 2;
-        const halfH = bDef.height / 2;
+        const halfW = bw / 2;
+        const halfH = bh / 2;
 
         const insideReserve = (
             gx - halfW >= this.reserve.x &&
@@ -4366,8 +4528,13 @@ class ReserveGame {
 
         let overlap = false;
         for (const b of this.state.placedBuildings) {
-            if (Math.abs(b.x - gx) < (b.width + bDef.width) / 2 &&
-                Math.abs(b.y - gy) < (b.height + bDef.height) / 2) {
+            const bRot = b.rotation || 0;
+            const bRotated = (bRot === 90 || bRot === 270);
+            const b_bw = bRotated ? b.height : b.width;
+            const b_bh = bRotated ? b.width : b.height;
+
+            if (Math.abs(b.x - gx) < (b_bw + bw) / 2 &&
+                Math.abs(b.y - gy) < (b_bh + bh) / 2) {
                 overlap = true;
                 break;
             }
@@ -4408,7 +4575,8 @@ class ReserveGame {
                 x: this.placementMode.gridX,
                 y: this.placementMode.gridY,
                 width: bDef.width,
-                height: bDef.height
+                height: bDef.height,
+                rotation: this.placementMode.rotation || 0
             };
 
             this.state.placedBuildings.push(buildingObj);
@@ -5494,24 +5662,26 @@ class ReserveGame {
 
         // 4. Render Placed Buildings & Furnaces & Braai & Chopping Station & Dog Bowl
         this.state.placedBuildings.forEach(b => {
+            const rot = b.rotation || 0;
             if (b.type === 'furnace') {
                 const furnaceObj = this.furnaces.find(f => f.id === b.id);
                 if (furnaceObj) {
-                    furnaceObj.render(this.ctx);
+                    furnaceObj.render(this.ctx, rot);
                 }
             } else if (b.type === 'braai') {
                 const braaiObj = this.braais.find(br => br.id === b.id);
                 if (braaiObj) {
-                    braaiObj.render(this.ctx, this.images);
+                    braaiObj.render(this.ctx, this.images, rot);
                 }
             } else if (b.type === 'dog_bowl') {
                 const bowlObj = this.dogBowls.find(db => db.id === b.id);
                 if (bowlObj) {
-                    bowlObj.render(this.ctx);
+                    bowlObj.render(this.ctx, rot);
                 }
             } else if (b.type === 'wood_chopping_station') {
                 this.ctx.save();
                 this.ctx.translate(b.x, b.y);
+                if (rot) this.ctx.rotate((rot * Math.PI) / 180);
 
                 this.ctx.fillStyle = '#6e4f34';
                 this.ctx.fillRect(-b.width / 2, -b.height / 2, b.width, b.height);
@@ -5529,6 +5699,7 @@ class ReserveGame {
             } else if (b.type === 'torch') {
                 this.ctx.save();
                 this.ctx.translate(b.x, b.y);
+                if (rot) this.ctx.rotate((rot * Math.PI) / 180);
 
                 this.ctx.fillStyle = '#5c4028';
                 this.ctx.fillRect(-3, -10, 6, 20);
@@ -5548,6 +5719,7 @@ class ReserveGame {
             } else if (b.type === 'workbench') {
                 this.ctx.save();
                 this.ctx.translate(b.x, b.y);
+                if (rot) this.ctx.rotate((rot * Math.PI) / 180);
 
                 this.ctx.fillStyle = '#8e5a2b';
                 this.ctx.fillRect(-b.width / 2, -b.height / 2, b.width, b.height);
@@ -5565,6 +5737,7 @@ class ReserveGame {
             } else if (b.type === 'ranger_hut') {
                 this.ctx.save();
                 this.ctx.translate(b.x, b.y);
+                if (rot) this.ctx.rotate((rot * Math.PI) / 180);
 
                 const hutImg = this.images['ranger-hut.png'];
                 if (hutImg && hutImg.complete) {
@@ -5586,31 +5759,33 @@ class ReserveGame {
                     this.ctx.fillText('RANGER HUT', 0, 0);
                 }
 
-            this.ctx.restore();
-        } else if (b.type === 'fence_tier1') {
-            this.ctx.save();
-            this.ctx.translate(b.x, b.y);
+                this.ctx.restore();
+            } else if (b.type === 'fence_tier1') {
+                this.ctx.save();
+                this.ctx.translate(b.x, b.y);
+                if (rot) this.ctx.rotate((rot * Math.PI) / 180);
 
-            const fImg = this.images['fence-tier1.png'];
-            if (fImg && fImg.complete) {
-                this.ctx.drawImage(fImg, -b.width / 2, -b.height / 2, b.width, b.height);
-            } else {
-                this.ctx.fillStyle = '#8e44ad';
-                this.ctx.fillRect(-b.width / 2, -b.height / 2, b.width, b.height);
-            }
+                const fImg = this.images['fence-tier1.png'];
+                if (fImg && fImg.complete) {
+                    this.ctx.drawImage(fImg, -b.width / 2, -b.height / 2, b.width, b.height);
+                } else {
+                    this.ctx.fillStyle = '#8e44ad';
+                    this.ctx.fillRect(-b.width / 2, -b.height / 2, b.width, b.height);
+                }
 
-            this.ctx.restore();
-        } else if (b.type === 'fence_gate') {
-            this.ctx.save();
-            this.ctx.translate(b.x, b.y);
+                this.ctx.restore();
+            } else if (b.type === 'fence_gate') {
+                this.ctx.save();
+                this.ctx.translate(b.x, b.y);
+                if (rot) this.ctx.rotate((rot * Math.PI) / 180);
 
-            const gImg = this.images['fence-tier1-employee-gate.png'];
-            if (gImg && gImg.complete) {
-                this.ctx.drawImage(gImg, -b.width / 2, -b.height / 2, b.width, b.height);
-            } else {
-                this.ctx.fillStyle = '#f39c12';
-                this.ctx.fillRect(-b.width / 2, -b.height / 2, b.width, b.height);
-            }
+                const gImg = this.images['fence-tier1-employee-gate.png'];
+                if (gImg && gImg.complete) {
+                    this.ctx.drawImage(gImg, -b.width / 2, -b.height / 2, b.width, b.height);
+                } else {
+                    this.ctx.fillStyle = '#f39c12';
+                    this.ctx.fillRect(-b.width / 2, -b.height / 2, b.width, b.height);
+                }
 
                 this.ctx.restore();
             }
@@ -5621,9 +5796,11 @@ class ReserveGame {
             const bDef = this.placementMode.buildingDef;
             const gx = this.placementMode.gridX;
             const gy = this.placementMode.gridY;
+            const rot = this.placementMode.rotation || 0;
 
             this.ctx.save();
             this.ctx.translate(gx, gy);
+            if (rot) this.ctx.rotate((rot * Math.PI) / 180);
 
             this.ctx.fillStyle = this.placementMode.valid ? 'rgba(46, 204, 113, 0.4)' : 'rgba(231, 76, 60, 0.4)';
             this.ctx.fillRect(-bDef.width / 2, -bDef.height / 2, bDef.width, bDef.height);
