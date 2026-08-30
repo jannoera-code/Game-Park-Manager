@@ -17,6 +17,401 @@ function hashCoordinates(x, y) {
 }
 
 /**
+ * AudioManager Class
+ * Handles preloading MP3 tracks, chaining music play, and Web Audio procedural SFX synthesis.
+ */
+class AudioManager {
+    constructor() {
+        this.ctx = null;
+        this.sfxGain = null;
+        this.music1 = new Audio('Savanna-music1.mp3');
+        this.music2 = new Audio('Savanna-music2.mp3');
+
+        this.musicVolume = 0.5;
+        this.sfxVolume = 0.5;
+        this.isStarted = false;
+
+        // Load stored volume preferences if available
+        const savedPref = localStorage.getItem('savanna_audio_settings');
+        if (savedPref) {
+            try {
+                const parsed = JSON.parse(savedPref);
+                if (typeof parsed.musicVolume === 'number') this.musicVolume = parsed.musicVolume;
+                if (typeof parsed.sfxVolume === 'number') this.sfxVolume = parsed.sfxVolume;
+            } catch (e) {}
+        }
+
+        this.music1.volume = this.musicVolume;
+        this.music2.volume = this.musicVolume;
+
+        // Music loop logic: track 1 ends -> track 2 plays continuously
+        this.music1.addEventListener('ended', () => {
+            this.music2.currentTime = 0;
+            this.music2.loop = true;
+            this.music2.play().catch(() => {});
+        });
+
+        this.music2.addEventListener('ended', () => {
+            this.music2.currentTime = 0;
+            this.music2.play().catch(() => {});
+        });
+    }
+
+    initAudioContext() {
+        if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) {
+                this.ctx = new AudioCtx();
+                this.sfxGain = this.ctx.createGain();
+                this.sfxGain.gain.value = this.sfxVolume;
+                this.sfxGain.connect(this.ctx.destination);
+            }
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume();
+        }
+    }
+
+    startAudio() {
+        this.initAudioContext();
+        if (!this.isStarted) {
+            this.isStarted = true;
+            this.music1.currentTime = 0;
+            this.music1.play().catch(e => {
+                this.isStarted = false;
+            });
+        }
+    }
+
+    setMusicVolume(vol) {
+        this.musicVolume = Math.max(0, Math.min(1, vol));
+        this.music1.volume = this.musicVolume;
+        this.music2.volume = this.musicVolume;
+        this.savePreferences();
+    }
+
+    setSfxVolume(vol) {
+        this.sfxVolume = Math.max(0, Math.min(1, vol));
+        if (this.sfxGain) {
+            this.sfxGain.gain.value = this.sfxVolume;
+        }
+        this.savePreferences();
+    }
+
+    savePreferences() {
+        localStorage.setItem('savanna_audio_settings', JSON.stringify({
+            musicVolume: this.musicVolume,
+            sfxVolume: this.sfxVolume
+        }));
+    }
+
+    playSound(type) {
+        if (!this.ctx) this.initAudioContext();
+        if (!this.ctx || this.sfxVolume <= 0) return;
+        if (this.ctx.state === 'suspended') {
+            this.ctx.resume();
+        }
+
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.connect(gain);
+        gain.connect(this.sfxGain);
+
+        if (type === 'hit') {
+            // Low-pitched square wave (for chopping/mining)
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(120, now);
+            osc.frequency.exponentialRampToValueAtTime(35, now + 0.12);
+            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+            osc.start(now);
+            osc.stop(now + 0.12);
+        } else if (type === 'click') {
+            // Short, high-pitched sine wave (UI clicks)
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(1000, now);
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+            osc.start(now);
+            osc.stop(now + 0.05);
+        } else if (type === 'eat') {
+            // Ascending frequency sweep (eating/drinking)
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(220, now);
+            osc.frequency.linearRampToValueAtTime(660, now + 0.25);
+            gain.gain.setValueAtTime(0.25, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+            osc.start(now);
+            osc.stop(now + 0.25);
+        }
+    }
+}
+
+// Global helper for procedural sound synthesis
+function playProceduralSound(type) {
+    if (window.game && window.game.audioManager) {
+        window.game.audioManager.playSound(type);
+    }
+}
+
+/**
+ * SaveManager Class
+ * Handles full state serialization, localStorage save slots, and class re-instantiation deserialization.
+ */
+class SaveManager {
+    static getSlotKey(slotId) {
+        return `savanna_save_slot_${slotId}`;
+    }
+
+    static getSlotMetadata(slotId) {
+        const raw = localStorage.getItem(SaveManager.getSlotKey(slotId));
+        if (!raw) return { slotId, exists: false };
+        try {
+            const data = JSON.parse(raw);
+            return {
+                slotId,
+                exists: true,
+                day: data.economy?.day || 1,
+                week: data.economy?.week || 1,
+                funds: data.economy?.funds || 0,
+                timestamp: data.timestamp || Date.now()
+            };
+        } catch (e) {
+            return { slotId, exists: false };
+        }
+    }
+
+    static serialize(game) {
+        return {
+            timestamp: Date.now(),
+            player: {
+                x: game.player.x,
+                y: game.player.y,
+                hp: game.player.hp,
+                maxHp: game.player.maxHp,
+                thirst: game.player.thirst,
+                maxThirst: game.player.maxThirst,
+                hunger: game.player.hunger,
+                maxHunger: game.player.maxHunger,
+                speedMult: game.player.speedMult
+            },
+            inventory: {
+                slots: game.inventory.slots
+            },
+            worldState: {
+                revealedChunks: Array.from(game.revealedChunks),
+                placedBuildings: game.state.placedBuildings,
+                furnaces: game.furnaces.map(f => ({
+                    id: f.id, x: f.x, y: f.y, width: f.width, height: f.height,
+                    fuelWood: f.fuelWood, rawStone: f.rawStone, processedStone: f.processedStone,
+                    isSmelting: f.isSmelting, smeltTimer: f.smeltTimer
+                })),
+                braais: game.braais.map(b => ({
+                    id: b.id, x: b.x, y: b.y, width: b.width, height: b.height,
+                    braaiWood: b.braaiWood, rawMeat: b.rawMeat, cookedMeat: b.cookedMeat,
+                    isCooking: b.isCooking, cookTimer: b.cookTimer
+                })),
+                droppedItems: game.droppedItems.map(d => ({
+                    id: d.id, type: d.type, amount: d.amount, x: d.x, y: d.y
+                })),
+                plantedSaplings: game.plantedSaplings.map(s => ({
+                    id: s.id, x: s.x, y: s.y, growthTime: s.growthTime, stage: s.stage, isMature: s.isMature
+                }))
+            },
+            aiState: {
+                ownedAnimals: game.state.ownedAnimals,
+                renderedAnimals: game.renderedAnimals.map(a => ({
+                    speciesId: a.speciesId, name: a.name, icon: a.icon, image: a.image,
+                    x: a.x, y: a.y, thirst: a.thirst, state: a.state,
+                    targetX: a.targetX, targetY: a.targetY, drinkTimer: a.drinkTimer,
+                    reserveBounds: a.reserveBounds
+                })),
+                hiredRangers: game.state.hiredRangers,
+                rangers: game.rangers.map(r => ({
+                    id: r.id, name: r.name, hutX: r.hutX, hutY: r.hutY, x: r.x, y: r.y,
+                    traits: r.traits, image: r.image, state: r.state,
+                    targetX: r.targetX, targetY: r.targetY, taskTimer: r.taskTimer,
+                    fenceWaypointIndex: r.fenceWaypointIndex, reserveBounds: r.reserveBounds
+                }))
+            },
+            economy: {
+                funds: game.state.funds,
+                day: game.state.day,
+                week: game.week,
+                timeElapsedInDay: game.timeElapsedInDay,
+                campTier: game.state.campTier,
+                fenceTier: game.state.fenceTier,
+                weeklyStats: game.weeklyStats,
+                buffs: game.buffs
+            }
+        };
+    }
+
+    static saveGame(game, slotId) {
+        const data = SaveManager.serialize(game);
+        localStorage.setItem(SaveManager.getSlotKey(slotId), JSON.stringify(data));
+        return true;
+    }
+
+    static deserialize(game, data) {
+        if (!data) return false;
+
+        // Restore Player State
+        if (data.player) {
+            game.player.x = data.player.x;
+            game.player.y = data.player.y;
+            game.player.hp = data.player.hp;
+            game.player.maxHp = data.player.maxHp;
+            game.player.thirst = data.player.thirst;
+            game.player.maxThirst = data.player.maxThirst;
+            game.player.hunger = data.player.hunger;
+            game.player.maxHunger = data.player.maxHunger;
+            if (data.player.speedMult) game.player.speedMult = data.player.speedMult;
+        }
+
+        // Restore Inventory
+        if (data.inventory && data.inventory.slots) {
+            game.inventory.slots = data.inventory.slots;
+        }
+
+        // Restore Economy & Time
+        if (data.economy) {
+            game.state.funds = data.economy.funds ?? 1000;
+            game.state.day = data.economy.day ?? 1;
+            game.week = data.economy.week ?? 1;
+            game.timeElapsedInDay = data.economy.timeElapsedInDay ?? 0;
+            game.state.dayProgress = (game.timeElapsedInDay / game.dayDuration) * 100;
+            game.state.campTier = data.economy.campTier ?? 1;
+            game.state.fenceTier = data.economy.fenceTier ?? 1;
+            if (data.economy.weeklyStats) game.weeklyStats = data.economy.weeklyStats;
+            if (data.economy.buffs) game.buffs = data.economy.buffs;
+        }
+
+        // Restore World State
+        if (data.worldState) {
+            if (data.worldState.revealedChunks) {
+                game.revealedChunks = new Set(data.worldState.revealedChunks);
+            }
+            if (data.worldState.placedBuildings) {
+                game.state.placedBuildings = data.worldState.placedBuildings;
+            }
+
+            // Re-instantiate Furnaces
+            game.furnaces = [];
+            if (data.worldState.furnaces) {
+                data.worldState.furnaces.forEach(f => {
+                    const furnace = new Furnace(f.id, f.x, f.y, f.width, f.height);
+                    furnace.fuelWood = f.fuelWood;
+                    furnace.rawStone = f.rawStone;
+                    furnace.processedStone = f.processedStone;
+                    furnace.isSmelting = f.isSmelting;
+                    furnace.smeltTimer = f.smeltTimer;
+                    game.furnaces.push(furnace);
+                });
+            }
+
+            // Re-instantiate Braais
+            game.braais = [];
+            if (data.worldState.braais) {
+                data.worldState.braais.forEach(b => {
+                    const braai = new Braai(b.id, b.x, b.y, b.width, b.height);
+                    braai.braaiWood = b.braaiWood;
+                    braai.rawMeat = b.rawMeat;
+                    braai.cookedMeat = b.cookedMeat;
+                    braai.isCooking = b.isCooking;
+                    braai.cookTimer = b.cookTimer;
+                    game.braais.push(braai);
+                });
+            }
+
+            // Re-instantiate DroppedItems
+            game.droppedItems = [];
+            if (data.worldState.droppedItems) {
+                data.worldState.droppedItems.forEach(d => {
+                    game.droppedItems.push(new DroppedItem(d.id, d.type, d.amount, d.x, d.y));
+                });
+            }
+
+            // Re-instantiate PlantedSaplings
+            game.plantedSaplings = [];
+            if (data.worldState.plantedSaplings) {
+                data.worldState.plantedSaplings.forEach(s => {
+                    const sap = new PlantedSapling(s.id, s.x, s.y);
+                    sap.growthTime = s.growthTime;
+                    sap.stage = s.stage;
+                    sap.isMature = s.isMature;
+                    game.plantedSaplings.push(sap);
+                });
+            }
+        }
+
+        // Restore AI State
+        if (data.aiState) {
+            if (data.aiState.ownedAnimals) {
+                game.state.ownedAnimals = data.aiState.ownedAnimals;
+            }
+
+            // Re-instantiate Animals
+            game.renderedAnimals = [];
+            if (data.aiState.renderedAnimals) {
+                data.aiState.renderedAnimals.forEach(aData => {
+                    const animal = new Animal(
+                        { speciesId: aData.speciesId, name: aData.name, icon: aData.icon, image: aData.image },
+                        aData.x, aData.y, aData.reserveBounds || game.reserve
+                    );
+                    animal.thirst = aData.thirst;
+                    animal.state = aData.state;
+                    animal.targetX = aData.targetX;
+                    animal.targetY = aData.targetY;
+                    animal.drinkTimer = aData.drinkTimer || 0;
+                    game.renderedAnimals.push(animal);
+                });
+            }
+
+            if (data.aiState.hiredRangers) {
+                game.state.hiredRangers = data.aiState.hiredRangers;
+            }
+
+            // Re-instantiate Rangers
+            game.rangers = [];
+            if (data.aiState.rangers) {
+                data.aiState.rangers.forEach(rData => {
+                    const ranger = new Ranger(
+                        { id: rData.id, name: rData.name, traits: rData.traits, image: rData.image },
+                        rData.hutX, rData.hutY, rData.reserveBounds || game.reserve
+                    );
+                    ranger.x = rData.x;
+                    ranger.y = rData.y;
+                    ranger.state = rData.state;
+                    ranger.targetX = rData.targetX;
+                    ranger.targetY = rData.targetY;
+                    ranger.taskTimer = rData.taskTimer;
+                    ranger.fenceWaypointIndex = rData.fenceWaypointIndex;
+                    game.rangers.push(ranger);
+                });
+            }
+        }
+
+        game.updateUI();
+        return true;
+    }
+
+    static loadGame(game, slotId) {
+        const raw = localStorage.getItem(SaveManager.getSlotKey(slotId));
+        if (!raw) return false;
+        try {
+            const data = JSON.parse(raw);
+            return SaveManager.deserialize(game, data);
+        } catch (e) {
+            console.error("Failed to load save data:", e);
+            return false;
+        }
+    }
+}
+
+/**
  * Dedicated Inventory Class
  * Manages 25 slot objects (20 Backpack + 5 Hotbar) with max stack limit of 100 per resource type and spillover logic.
  */
@@ -1361,9 +1756,19 @@ class Furnace {
 class ReserveGame {
     constructor() {
         this.state = JSON.parse(JSON.stringify(INITIAL_GAME_STATE));
-        this.dayDuration = 120;
+        this.dayDuration = 300;
         this.tickInterval = 100;
         this.timeElapsedInDay = 0;
+        this.isPaused = false;
+        this.week = 1;
+        this.weeklyStats = {
+            income: 0,
+            expenses: 0,
+            wagesSpent: 0,
+            animalsBought: 0,
+            buildingsBuilt: 0,
+            upgradesSpent: 0
+        };
 
         // Reserve Fixed Coordinate Zone
         this.reserve = { x: 500, y: 500, width: 1000, height: 1000 };
@@ -1384,7 +1789,8 @@ class ReserveGame {
             capacityBonus: 0
         };
 
-        // OOP Managers & Entities
+        // OOP Managers & Audio Systems
+        this.audioManager = new AudioManager();
         this.inventory = new Inventory(25, 100); // 25 slots (20 Backpack + 5 Hotbar), 100 max stack
         this.activeHotbarIndex = 0; // 0 to 4 (corresponding to slots 20 to 24)
         this.chunkManager = new ChunkManager(1000, 2);
@@ -1476,6 +1882,7 @@ class ReserveGame {
 
         this.setupUIControls();
         this.setupInputListeners();
+        this.setupMainMenuAndPauseControls();
         this.initVisualAnimals();
         this.syncRangersWithInfrastructure();
         this.updateUI();
@@ -1504,9 +1911,7 @@ class ReserveGame {
                 this.toggleInventoryModal();
             }
             if (e.key === 'Escape') {
-                this.cancelPlacement();
-                this.closeFurnaceModal();
-                this.closeInventoryModal();
+                this.handleEscapeKey();
             }
         });
 
@@ -1514,6 +1919,16 @@ class ReserveGame {
             const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
             if (k in this.keys) {
                 this.keys[k] = false;
+            }
+        });
+
+        // Global sound & audio initiation on interaction
+        document.addEventListener('click', (e) => {
+            if (this.audioManager) {
+                this.audioManager.startAudio();
+            }
+            if (e.target.closest('button, .action-btn, .hotbar-slot, .inventory-slot, .close-btn, .sidebar-strip-handle, summary, .crate-choice-card, .menu-btn')) {
+                playProceduralSound('click');
             }
         });
 
@@ -1547,6 +1962,229 @@ class ReserveGame {
                     this.mouse.isDown = false;
                 }
             });
+        }
+    }
+
+    handleEscapeKey() {
+        let closedSomething = false;
+
+        if (this.placementMode.active) {
+            this.cancelPlacement();
+            closedSomething = true;
+        }
+
+        const modalsToClose = [
+            'furnace-modal', 'braai-modal', 'workbench-modal', 'inventory-modal',
+            'container-modal', 'crate-modal', 'load-game-modal', 'save-game-modal', 'weekly-recap-modal'
+        ];
+
+        modalsToClose.forEach(id => {
+            const el = document.getElementById(id);
+            if (el && !el.classList.contains('hidden')) {
+                el.classList.add('hidden');
+                closedSomething = true;
+            }
+        });
+
+        if (!closedSomething) {
+            const mainMenu = document.getElementById('main-menu-overlay');
+            if (mainMenu && !mainMenu.classList.contains('hidden')) return;
+
+            this.togglePauseModal();
+        }
+    }
+
+    setupMainMenuAndPauseControls() {
+        const startNewBtn = document.getElementById('start-new-game-btn');
+        if (startNewBtn) {
+            startNewBtn.addEventListener('click', () => {
+                const mainMenu = document.getElementById('main-menu-overlay');
+                if (mainMenu) mainMenu.classList.add('hidden');
+                this.isPaused = false;
+                if (this.audioManager) this.audioManager.startAudio();
+            });
+        }
+
+        const openLoadBtn = document.getElementById('open-load-menu-btn');
+        if (openLoadBtn) {
+            openLoadBtn.addEventListener('click', () => {
+                const loadModal = document.getElementById('load-game-modal');
+                if (loadModal) {
+                    loadModal.classList.remove('hidden');
+                    this.renderLoadSlotsUI();
+                }
+            });
+        }
+
+        const closeLoadBtn = document.getElementById('close-load-menu-btn');
+        if (closeLoadBtn) {
+            closeLoadBtn.addEventListener('click', () => {
+                const loadModal = document.getElementById('load-game-modal');
+                if (loadModal) loadModal.classList.add('hidden');
+            });
+        }
+
+        const resumeBtn = document.getElementById('resume-game-btn');
+        if (resumeBtn) {
+            resumeBtn.addEventListener('click', () => {
+                this.togglePauseModal(false);
+            });
+        }
+
+        const openSaveBtn = document.getElementById('open-save-menu-btn');
+        if (openSaveBtn) {
+            openSaveBtn.addEventListener('click', () => {
+                const saveModal = document.getElementById('save-game-modal');
+                if (saveModal) {
+                    saveModal.classList.remove('hidden');
+                    this.renderSaveSlotsUI();
+                }
+            });
+        }
+
+        const closeSaveBtn = document.getElementById('close-save-menu-btn');
+        if (closeSaveBtn) {
+            closeSaveBtn.addEventListener('click', () => {
+                const saveModal = document.getElementById('save-game-modal');
+                if (saveModal) saveModal.classList.add('hidden');
+            });
+        }
+
+        const returnMainBtn = document.getElementById('return-main-menu-btn');
+        if (returnMainBtn) {
+            returnMainBtn.addEventListener('click', () => {
+                this.togglePauseModal(false);
+                const mainMenu = document.getElementById('main-menu-overlay');
+                if (mainMenu) mainMenu.classList.remove('hidden');
+            });
+        }
+
+        const musicSlider = document.getElementById('music-volume-slider');
+        const musicText = document.getElementById('music-volume-text');
+        if (musicSlider) {
+            musicSlider.value = this.audioManager.musicVolume;
+            if (musicText) musicText.textContent = `${Math.round(this.audioManager.musicVolume * 100)}%`;
+            musicSlider.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                this.audioManager.setMusicVolume(val);
+                if (musicText) musicText.textContent = `${Math.round(val * 100)}%`;
+            });
+        }
+
+        const sfxSlider = document.getElementById('sfx-volume-slider');
+        const sfxText = document.getElementById('sfx-volume-text');
+        if (sfxSlider) {
+            sfxSlider.value = this.audioManager.sfxVolume;
+            if (sfxText) sfxText.textContent = `${Math.round(this.audioManager.sfxVolume * 100)}%`;
+            sfxSlider.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                this.audioManager.setSfxVolume(val);
+                if (sfxText) sfxText.textContent = `${Math.round(val * 100)}%`;
+            });
+        }
+    }
+
+    togglePauseModal(forceState = null) {
+        const modal = document.getElementById('pause-modal');
+        if (!modal) return;
+
+        if (forceState !== null) {
+            this.isPaused = forceState;
+        } else {
+            this.isPaused = !this.isPaused;
+        }
+
+        if (this.isPaused) {
+            modal.classList.remove('hidden');
+            const musicSlider = document.getElementById('music-volume-slider');
+            const musicText = document.getElementById('music-volume-text');
+            if (musicSlider) {
+                musicSlider.value = this.audioManager.musicVolume;
+                if (musicText) musicText.textContent = `${Math.round(this.audioManager.musicVolume * 100)}%`;
+            }
+
+            const sfxSlider = document.getElementById('sfx-volume-slider');
+            const sfxText = document.getElementById('sfx-volume-text');
+            if (sfxSlider) {
+                sfxSlider.value = this.audioManager.sfxVolume;
+                if (sfxText) sfxText.textContent = `${Math.round(this.audioManager.sfxVolume * 100)}%`;
+            }
+        } else {
+            modal.classList.add('hidden');
+        }
+    }
+
+    renderSaveSlotsUI() {
+        const container = document.getElementById('save-slots-container');
+        if (!container) return;
+        container.innerHTML = '';
+
+        for (let slotId = 1; slotId <= 3; slotId++) {
+            const meta = SaveManager.getSlotMetadata(slotId);
+            const slotCard = document.createElement('div');
+            slotCard.className = `save-slot-card ${meta.exists ? '' : 'save-slot-empty'}`;
+
+            const dateStr = meta.exists ? new Date(meta.timestamp).toLocaleDateString() : '';
+
+            slotCard.innerHTML = `
+                <div class="save-slot-info">
+                    <h4>Slot ${slotId} ${meta.exists ? '💾' : '📁 (Empty)'}</h4>
+                    <p>${meta.exists ? `Day ${meta.day} (Week ${meta.week}) | Funds: $${meta.funds.toLocaleString()} | ${dateStr}` : 'Click to save game in this slot'}</p>
+                </div>
+                <button class="action-btn small-btn" style="width: auto; padding: 6px 14px;">Save Slot ${slotId}</button>
+            `;
+
+            slotCard.querySelector('button').addEventListener('click', () => {
+                SaveManager.saveGame(this, slotId);
+                this.showNotification(`Game Saved Successfully in Slot ${slotId}!`);
+                const saveModal = document.getElementById('save-game-modal');
+                if (saveModal) saveModal.classList.add('hidden');
+                this.renderSaveSlotsUI();
+            });
+
+            container.appendChild(slotCard);
+        }
+    }
+
+    renderLoadSlotsUI() {
+        const container = document.getElementById('load-slots-container');
+        if (!container) return;
+        container.innerHTML = '';
+
+        for (let slotId = 1; slotId <= 3; slotId++) {
+            const meta = SaveManager.getSlotMetadata(slotId);
+            const slotCard = document.createElement('div');
+            slotCard.className = `save-slot-card ${meta.exists ? '' : 'save-slot-empty'}`;
+
+            const dateStr = meta.exists ? new Date(meta.timestamp).toLocaleDateString() : '';
+
+            slotCard.innerHTML = `
+                <div class="save-slot-info">
+                    <h4>Slot ${slotId} ${meta.exists ? '💾' : '📁 (Empty)'}</h4>
+                    <p>${meta.exists ? `Day ${meta.day} (Week ${meta.week}) | Funds: $${meta.funds.toLocaleString()} | ${dateStr}` : 'No save data available'}</p>
+                </div>
+                <button class="action-btn small-btn" ${!meta.exists ? 'disabled' : ''} style="width: auto; padding: 6px 14px;">
+                    ${meta.exists ? 'Load Slot' : 'Empty'}
+                </button>
+            `;
+
+            if (meta.exists) {
+                slotCard.addEventListener('click', () => {
+                    if (SaveManager.loadGame(this, slotId)) {
+                        this.showNotification(`Game Loaded Successfully from Slot ${slotId}!`);
+                        const loadModal = document.getElementById('load-game-modal');
+                        if (loadModal) loadModal.classList.add('hidden');
+                        const mainMenu = document.getElementById('main-menu-overlay');
+                        if (mainMenu) mainMenu.classList.add('hidden');
+                        this.isPaused = false;
+                        if (this.audioManager) this.audioManager.startAudio();
+                    } else {
+                        this.showNotification('Failed to load save data!');
+                    }
+                });
+            }
+
+            container.appendChild(slotCard);
         }
     }
 
@@ -1728,6 +2366,7 @@ class ReserveGame {
             this.inventory.consumeItem('cooked_meat', 1);
             this.player.hunger = Math.min(this.player.maxHunger, this.player.hunger + 40);
             this.player.hp = Math.min(this.player.maxHp, this.player.hp + 15);
+            playProceduralSound('eat');
             this.addFloatingText('🍖 Ate Cooked Meat! (+40 Hunger)', this.player.x, this.player.y - 20, '#f39c12');
             this.showNotification('Ate Cooked Meat! Restored Hunger & HP.');
             this.updateUI();
@@ -1804,6 +2443,7 @@ class ReserveGame {
                     this.player.hp = Math.min(this.player.maxHp, this.player.hp + drank * 0.5);
                 }
 
+                playProceduralSound('eat');
                 this.addFloatingText(`+${Math.round(drank)} Water`, this.player.x, this.player.y - 20, '#3498db');
                 this.showNotification('Replenished thirst from the Reserve Waterhole!');
                 return;
@@ -1890,6 +2530,7 @@ class ReserveGame {
             else if (['stone-axe', 'stone-pickaxe', 'stone-shovel'].includes(activeTool.type)) dmg = 2;
         }
 
+        playProceduralSound('hit');
         const result = node.hit(dmg, this.buffs.harvestYieldBonus);
         this.player.triggerScreenShake(5, 0.12);
 
@@ -2358,10 +2999,12 @@ class ReserveGame {
             const woodCount = this.inventory.getItemCount('wood');
             const stoneCount = this.inventory.getItemCount('stone');
             const pStoneCount = this.inventory.getItemCount('processedStone');
+            const saplingCount = this.inventory.getItemCount('sapling');
 
             const canAfford = woodCount >= (itemDef.woodCost || 0) &&
                               stoneCount >= (itemDef.stoneCost || 0) &&
-                              pStoneCount >= (itemDef.processedStoneCost || 0);
+                              pStoneCount >= (itemDef.processedStoneCost || 0) &&
+                              saplingCount >= (itemDef.saplingCost || 0);
 
             const card = document.createElement('div');
             card.className = 'item-card';
@@ -2383,6 +3026,7 @@ class ReserveGame {
                     ${itemDef.woodCost ? `<span class="badge">Wood: ${itemDef.woodCost}</span>` : ''}
                     ${itemDef.stoneCost ? `<span class="badge">Stone: ${itemDef.stoneCost}</span>` : ''}
                     ${itemDef.processedStoneCost ? `<span class="badge">P-Stone: ${itemDef.processedStoneCost}</span>` : ''}
+                    ${itemDef.saplingCost ? `<span class="badge">Sapling: ${itemDef.saplingCost}</span>` : ''}
                 </div>
                 <button class="action-btn" ${!canAfford ? 'disabled' : ''}>
                     ${!canAfford ? 'Insufficient Resources' : (itemDef.type === 'item' ? `Craft ${itemDef.name}` : `Build ${itemDef.name}`)}
@@ -2397,6 +3041,7 @@ class ReserveGame {
                             this.inventory.consumeItem('wood', itemDef.woodCost || 0);
                             this.inventory.consumeItem('stone', itemDef.stoneCost || 0);
                             this.inventory.consumeItem('processedStone', itemDef.processedStoneCost || 0);
+                            if (itemDef.saplingCost) this.inventory.consumeItem('sapling', itemDef.saplingCost);
                             this.inventory.addItem(itemDef.id, 1);
                             this.showNotification(`Crafted 1x ${itemDef.name}!`);
                             this.updateUI();
@@ -2478,14 +3123,19 @@ class ReserveGame {
         const woodCount = this.inventory.getItemCount('wood');
         const stoneCount = this.inventory.getItemCount('stone');
         const pStoneCount = this.inventory.getItemCount('processedStone');
+        const saplingCount = this.inventory.getItemCount('sapling');
 
         if (woodCount >= bDef.woodCost &&
             stoneCount >= bDef.stoneCost &&
-            pStoneCount >= (bDef.processedStoneCost || 0)) {
+            pStoneCount >= (bDef.processedStoneCost || 0) &&
+            saplingCount >= (bDef.saplingCost || 0)) {
 
             this.inventory.consumeItem('wood', bDef.woodCost);
             this.inventory.consumeItem('stone', bDef.stoneCost);
             this.inventory.consumeItem('processedStone', bDef.processedStoneCost || 0);
+            if (bDef.saplingCost) {
+                this.inventory.consumeItem('sapling', bDef.saplingCost);
+            }
 
             const buildingObj = {
                 id: `${bDef.id}_${Date.now()}`,
@@ -2685,6 +3335,7 @@ class ReserveGame {
     // Main Game Loops
     startBackgroundLoop() {
         setInterval(() => {
+            if (this.isPaused) return;
             const deltaSec = this.tickInterval / 1000;
             this.timeElapsedInDay += deltaSec;
             this.state.dayProgress = (this.timeElapsedInDay / this.dayDuration) * 100;
@@ -2733,6 +3384,11 @@ class ReserveGame {
         const frame = (timestamp) => {
             const dt = Math.min(0.1, (timestamp - this.lastFrameTime) / 1000);
             this.lastFrameTime = timestamp;
+
+            if (this.isPaused) {
+                requestAnimationFrame(frame);
+                return;
+            }
 
             // Fog of War exploration tracking
             const chunkX = Math.floor(this.player.x / 1000);
@@ -2786,15 +3442,87 @@ class ReserveGame {
     }
 
     processNewDay() {
-        this.state.day += 1;
-        const netIncome = this.getNetDailyIncome();
-        this.state.funds += netIncome;
+        const dailyIncome = this.getDailyAttractionIncome();
+        const dailyWages = this.getDailyRangerWages();
+        const dailyNet = dailyIncome - dailyWages;
+
+        this.state.funds += dailyNet;
+        this.weeklyStats.income += dailyIncome;
+        this.weeklyStats.wagesSpent += dailyWages;
+        this.weeklyStats.expenses += dailyWages;
 
         // Refresh Marketplace Listings
         this.animalMarketListings = generateAnimalListings(6);
         this.rangerListings = generateRangerListings(6);
 
-        this.showNotification(`Day ${this.state.day} started! Daily net income: ${netIncome >= 0 ? '+' : ''}$${netIncome}`);
+        // Check if week ended (every 7 days)
+        if (this.state.day % 7 === 0) {
+            this.triggerWeeklyRecapModal();
+        } else {
+            this.state.day += 1;
+            this.showNotification(`Day ${this.state.day} started! Daily net income: ${dailyNet >= 0 ? '+' : ''}$${dailyNet}`);
+        }
+
+        this.updateUI();
+    }
+
+    triggerWeeklyRecapModal() {
+        this.isPaused = true;
+
+        const modal = document.getElementById('weekly-recap-modal');
+        if (!modal) return;
+
+        const elWeek = document.getElementById('recap-week-num');
+        const elNextWeek = document.getElementById('recap-next-week-num');
+        const elIncome = document.getElementById('recap-total-income');
+        const elExpenses = document.getElementById('recap-total-expenses');
+        const elProfit = document.getElementById('recap-net-profit');
+        const elWages = document.getElementById('recap-wages-spent');
+        const elAnimals = document.getElementById('recap-animals-spent');
+        const elUpgrades = document.getElementById('recap-upgrades-spent');
+
+        if (elWeek) elWeek.textContent = this.week;
+        if (elNextWeek) elNextWeek.textContent = this.week + 1;
+        if (elIncome) elIncome.textContent = `+$${this.weeklyStats.income.toLocaleString()}`;
+        if (elExpenses) elExpenses.textContent = `-$${this.weeklyStats.expenses.toLocaleString()}`;
+
+        const netProfit = this.weeklyStats.income - this.weeklyStats.expenses;
+        if (elProfit) {
+            elProfit.textContent = `${netProfit >= 0 ? '+' : ''}$${netProfit.toLocaleString()}`;
+            elProfit.style.color = netProfit >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+        }
+
+        if (elWages) elWages.textContent = `$${this.weeklyStats.wagesSpent.toLocaleString()}`;
+        if (elAnimals) elAnimals.textContent = `$${this.weeklyStats.animalsBought.toLocaleString()}`;
+        if (elUpgrades) elUpgrades.textContent = `$${this.weeklyStats.upgradesSpent.toLocaleString()}`;
+
+        modal.classList.remove('hidden');
+
+        const btn = document.getElementById('start-next-week-btn');
+        if (btn) {
+            btn.onclick = () => this.startNextWeek();
+        }
+    }
+
+    startNextWeek() {
+        const modal = document.getElementById('weekly-recap-modal');
+        if (modal) modal.classList.add('hidden');
+
+        this.week += 1;
+        this.state.day += 1;
+
+        // Reset weekly statistics
+        this.weeklyStats = {
+            income: 0,
+            expenses: 0,
+            wagesSpent: 0,
+            animalsBought: 0,
+            buildingsBuilt: 0,
+            upgradesSpent: 0
+        };
+
+        this.isPaused = false;
+        this.showNotification(`Week ${this.week} started! Good luck running Serengeti Reserve.`);
         this.updateUI();
     }
 
@@ -2806,12 +3534,49 @@ class ReserveGame {
         }
     }
 
+    getFormattedTime() {
+        const totalHours = ((this.timeElapsedInDay / this.dayDuration) * 24 + 6) % 24;
+        const hours = Math.floor(totalHours);
+        const minutes = Math.floor((totalHours % 1) * 60);
+        const isNight = hours < 6 || hours >= 18;
+        const icon = isNight ? '🌙' : '☀️';
+        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} ${icon}`;
+    }
+
+    getNightDarknessAlpha() {
+        const t = this.timeElapsedInDay; // 0 to 300s
+        const maxAlpha = 0.85;
+
+        if (t >= 137.5 && t < 162.5) {
+            // Dusk (17:00 to 19:00)
+            return ((t - 137.5) / 25) * maxAlpha;
+        } else if (t >= 162.5 && t < 287.5) {
+            // Full night (19:00 to 05:00)
+            return maxAlpha;
+        } else if (t >= 287.5 && t <= 300) {
+            // Dawn part 1 (05:00 to 06:00)
+            return maxAlpha - ((t - 287.5) / 25) * maxAlpha;
+        } else if (t >= 0 && t < 12.5) {
+            // Dawn part 2 (06:00 to 07:00)
+            return (maxAlpha * 0.5) - (t / 12.5) * (maxAlpha * 0.5);
+        } else {
+            return 0;
+        }
+    }
+
     updateUI() {
         const elFunds = document.getElementById('stat-funds');
         if (elFunds) elFunds.textContent = `$${this.state.funds.toLocaleString()}`;
 
+        const elClock = document.getElementById('digital-clock');
+        if (elClock) elClock.textContent = this.getFormattedTime();
+
+        const dayInWeek = ((this.state.day - 1) % 7) + 1;
         const elDay = document.getElementById('stat-day');
-        if (elDay) elDay.textContent = this.state.day;
+        if (elDay) elDay.textContent = dayInWeek;
+
+        const elWeek = document.getElementById('stat-week');
+        if (elWeek) elWeek.textContent = this.week;
 
         const netInc = this.getNetDailyIncome();
         const elNetInc = document.getElementById('stat-net-income');
@@ -2889,6 +3654,8 @@ class ReserveGame {
     buyAnimal(animal) {
         if (this.state.funds >= animal.cost && this.getCurrentAnimalCount() < this.getTotalCapacity()) {
             this.state.funds -= animal.cost;
+            this.weeklyStats.animalsBought += animal.cost;
+            this.weeklyStats.expenses += animal.cost;
             this.state.ownedAnimals.push(animal);
 
             // Remove from marketplace listing
@@ -3035,6 +3802,8 @@ class ReserveGame {
             if (btn && canAfford) {
                 btn.addEventListener('click', () => {
                     this.state.funds -= nextCamp.cost;
+                    this.weeklyStats.upgradesSpent += nextCamp.cost;
+                    this.weeklyStats.expenses += nextCamp.cost;
                     this.inventory.consumeItem('wood', nextCamp.woodCost);
                     this.inventory.consumeItem('stone', nextCamp.stoneCost || 0);
                     this.inventory.consumeItem('processedStone', nextCamp.processedStoneCost || 0);
@@ -3090,6 +3859,8 @@ class ReserveGame {
             if (btn && canAfford) {
                 btn.addEventListener('click', () => {
                     this.state.funds -= nextFence.cost;
+                    this.weeklyStats.upgradesSpent += nextFence.cost;
+                    this.weeklyStats.expenses += nextFence.cost;
                     this.inventory.consumeItem('wood', nextFence.woodCost);
                     this.inventory.consumeItem('stone', nextFence.stoneCost || 0);
                     this.inventory.consumeItem('processedStone', nextFence.processedStoneCost || 0);
@@ -3376,6 +4147,25 @@ class ReserveGame {
                 this.ctx.fillText('🪓', 0, 0);
 
                 this.ctx.restore();
+            } else if (b.type === 'torch') {
+                this.ctx.save();
+                this.ctx.translate(b.x, b.y);
+
+                this.ctx.fillStyle = '#5c4028';
+                this.ctx.fillRect(-3, -10, 6, 20);
+
+                const flick = 2 + Math.sin(performance.now() / 100) * 1.5;
+                this.ctx.fillStyle = '#f39c12';
+                this.ctx.beginPath();
+                this.ctx.arc(0, -12, 6 + flick, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                this.ctx.fillStyle = '#f1c40f';
+                this.ctx.beginPath();
+                this.ctx.arc(0, -12, 3 + flick * 0.5, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                this.ctx.restore();
             } else if (b.type === 'workbench') {
                 this.ctx.save();
                 this.ctx.translate(b.x, b.y);
@@ -3455,7 +4245,75 @@ class ReserveGame {
         // 8. Render Player
         this.player.render(this.ctx, this.images);
 
-        // 9. Fog of War Overlay (Pitch Black Outside Revealed Radius & Reserve)
+        // 9. Dynamic Lighting Overlay for Night Phase
+        const nightAlpha = this.getNightDarknessAlpha();
+        if (nightAlpha > 0) {
+            if (!this.lightingCanvas) {
+                this.lightingCanvas = document.createElement('canvas');
+                this.lightingCtx = this.lightingCanvas.getContext('2d');
+            }
+            if (this.lightingCanvas.width !== screenW || this.lightingCanvas.height !== screenH) {
+                this.lightingCanvas.width = screenW;
+                this.lightingCanvas.height = screenH;
+            }
+
+            const lCtx = this.lightingCtx;
+            lCtx.clearRect(0, 0, screenW, screenH);
+
+            lCtx.fillStyle = `rgba(5, 10, 25, ${nightAlpha})`;
+            lCtx.fillRect(0, 0, screenW, screenH);
+
+            lCtx.globalCompositeOperation = 'destination-out';
+
+            const drawLightPool = (worldX, worldY, radius) => {
+                const screenX = worldX - camX;
+                const screenY = worldY - camY;
+
+                if (screenX + radius < 0 || screenX - radius > screenW ||
+                    screenY + radius < 0 || screenY - radius > screenH) return;
+
+                const grad = lCtx.createRadialGradient(screenX, screenY, radius * 0.1, screenX, screenY, radius);
+                grad.addColorStop(0, 'rgba(0, 0, 0, 1)');
+                grad.addColorStop(0.7, 'rgba(0, 0, 0, 0.6)');
+                grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+                lCtx.fillStyle = grad;
+                lCtx.beginPath();
+                lCtx.arc(screenX, screenY, radius, 0, Math.PI * 2);
+                lCtx.fill();
+            };
+
+            // Player light pool
+            drawLightPool(this.player.x, this.player.y, 160);
+
+            // Placed buildings light pools (Torches, Furnaces, Braais)
+            this.state.placedBuildings.forEach(b => {
+                if (b.type === 'torch') {
+                    const flick = Math.sin(performance.now() / 150) * 8;
+                    drawLightPool(b.x, b.y, 180 + flick);
+                } else if (b.type === 'furnace') {
+                    const furnaceObj = this.furnaces.find(f => f.id === b.id);
+                    if (furnaceObj && furnaceObj.isSmelting) {
+                        drawLightPool(b.x, b.y, 150);
+                    } else {
+                        drawLightPool(b.x, b.y, 70);
+                    }
+                } else if (b.type === 'braai') {
+                    const braaiObj = this.braais.find(br => br.id === b.id);
+                    if (braaiObj && braaiObj.isCooking) {
+                        drawLightPool(b.x, b.y, 150);
+                    } else {
+                        drawLightPool(b.x, b.y, 70);
+                    }
+                }
+            });
+
+            lCtx.globalCompositeOperation = 'source-over';
+
+            this.ctx.drawImage(this.lightingCanvas, camX, camY);
+        }
+
+        // 10. Fog of War Overlay (Pitch Black Outside Revealed Radius & Reserve)
         this.renderFogOfWar(camX, camY, screenW, screenH);
 
         // 10. Render Floating Feedback Texts
