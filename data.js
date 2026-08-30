@@ -87,6 +87,17 @@ const BUFF_OPTIONS = [
     { id: 'capacity', title: '🎪 Reserve Permit', description: '+5 Animal Capacity', effect: { capacityBonus: 5 } }
 ];
 
+const SELLER_RESERVES = [
+    'Kruger East',
+    'Zambezi Plains',
+    'Baobab Sanctuary',
+    'Serengeti North',
+    'Ngorongoro Rim',
+    'Okavango Basin',
+    'Tsavo Valley',
+    'Chobe Ridge'
+];
+
 /**
  * Dynamic Animal Listing Generator
  */
@@ -96,6 +107,7 @@ function generateAnimalListings(count = 6) {
         const species = BASE_ANIMAL_SPECIES[Math.floor(Math.random() * BASE_ANIMAL_SPECIES.length)];
         const gender = Math.random() < 0.5 ? 'Male' : 'Female';
         const age = Math.floor(1 + Math.random() * species.maxAge);
+        const sellerReserve = SELLER_RESERVES[Math.floor(Math.random() * SELLER_RESERVES.length)];
 
         // Prime adult age factor (e.g. middle age is highest value)
         const primeAge = Math.floor(species.maxAge * 0.4);
@@ -117,6 +129,7 @@ function generateAnimalListings(count = 6) {
             attractionScore: attractionScore,
             enclosureTierReq: species.enclosureTierReq,
             upkeep: species.upkeep,
+            sellerReserve: sellerReserve,
             description: `${species.description} (${gender}, ${age} yrs old)`
         });
     }

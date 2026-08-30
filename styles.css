@@ -60,13 +60,70 @@ canvas#reserveCanvas {
 }
 
 /* Interactive components enable pointer events */
+.survival-hud,
 .top-hud,
-.side-menu-container,
+.master-sidebar,
+.hotbar-container,
 .minimap-container,
 .modal-card,
 .status-banner,
 .controls-guide {
     pointer-events: auto;
+}
+
+/* Player Survival HUD (Top-Left) */
+.survival-hud {
+    position: absolute;
+    top: 10px;
+    left: 15px;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: var(--bg-glass);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    border: 1px solid var(--border-color);
+    padding: 8px 12px;
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+    min-width: 170px;
+}
+
+.survival-bar-group {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.survival-label {
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: var(--text-main);
+    width: 65px;
+}
+
+.survival-bar {
+    flex: 1;
+    height: 12px;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.bar-fill {
+    height: 100%;
+    transition: width 0.2s ease-out;
+}
+
+.hp-fill {
+    background: linear-gradient(90deg, #e74c3c, #2ecc71);
+}
+
+.thirst-fill {
+    background: linear-gradient(90deg, #2980b9, #3498db);
 }
 
 /* Top HUD Header */
@@ -75,7 +132,7 @@ canvas#reserveCanvas {
     backdrop-filter: blur(5px);
     -webkit-backdrop-filter: blur(5px);
     border-bottom: 1px solid var(--border-color);
-    padding: 10px 20px;
+    padding: 10px 20px 10px 200px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -200,87 +257,96 @@ canvas#reserveCanvas {
     display: none;
 }
 
-/* Fluid Hover-Slide Side Menu Dock */
-.side-menu-container {
+/* Consolidated Master Right Sidebar Dock */
+.master-sidebar {
     position: absolute;
     right: 0;
-    top: 50%;
-    transform: translateY(-50%);
+    top: 55%;
+    transform: translateY(-50%) translateX(320px);
+    width: 360px;
+    height: 75vh;
+    max-height: 600px;
+    background: var(--bg-glass);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--border-color);
+    border-right: none;
+    border-radius: 16px 0 0 16px;
     display: flex;
-    flex-direction: column;
-    gap: 10px;
+    flex-direction: row;
+    box-shadow: -10px 10px 35px rgba(0, 0, 0, 0.6);
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
     z-index: 50;
 }
 
-.slide-menu-item {
-    position: relative;
-    display: flex;
-    flex-direction: row-reverse;
-    align-items: flex-start;
-    /* Translate menu panel out off-screen by 300px */
-    transform: translateX(300px);
-    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+.master-sidebar:hover {
+    transform: translateY(-50%) translateX(0);
 }
 
-/* Smooth slide out on hover */
-.slide-menu-item:hover {
-    transform: translateX(0);
-}
-
-.menu-tab {
-    width: 60px;
-    height: 70px;
-    background: var(--bg-glass);
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
-    border: 1px solid var(--border-color);
-    border-right: none;
-    border-radius: 12px 0 0 12px;
+.sidebar-strip-handle {
+    width: 40px;
+    height: 100%;
+    background: var(--bg-glass-card);
+    border-right: 1px solid var(--border-color);
+    border-radius: 16px 0 0 16px;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    font-size: 1.2rem;
     color: var(--accent-gold);
-    box-shadow: -4px 4px 15px rgba(0, 0, 0, 0.3);
-    transition: background 0.2s ease;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    font-size: 0.75rem;
+    font-weight: bold;
+    letter-spacing: 1px;
     flex-shrink: 0;
 }
 
-.menu-tab span {
-    font-size: 0.55rem;
-    color: var(--text-main);
-    margin-top: 2px;
-}
-
-.slide-menu-item:hover .menu-tab {
+.master-sidebar:hover .sidebar-strip-handle {
     background: var(--bg-glass-hover);
-    border-color: var(--accent-gold);
+    color: #f1c40f;
 }
 
-.menu-panel {
-    width: 300px;
-    height: 440px;
-    background: var(--bg-glass);
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
-    border: 1px solid var(--border-color);
-    border-radius: 0 0 0 12px;
-    padding: 14px;
+.sidebar-content {
+    flex: 1;
     display: flex;
     flex-direction: column;
-    box-shadow: -8px 8px 30px rgba(0, 0, 0, 0.5);
-    overflow: hidden;
-    flex-shrink: 0;
+    padding: 12px;
+    overflow-y: auto;
+    gap: 10px;
 }
 
-.menu-panel h3 {
-    font-size: 1.05rem;
+.sidebar-section {
+    background: var(--bg-glass-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    overflow: hidden;
+    transition: border-color 0.2s ease;
+}
+
+.sidebar-section[open] {
+    border-color: var(--border-highlight);
+}
+
+.section-header {
+    padding: 10px 14px;
+    font-size: 0.9rem;
+    font-weight: bold;
     color: var(--accent-gold);
-    margin-bottom: 12px;
-    padding-bottom: 6px;
-    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    background: rgba(0, 0, 0, 0.25);
+    user-select: none;
+    transition: background 0.2s;
+}
+
+.section-header:hover {
+    background: rgba(243, 156, 18, 0.15);
+}
+
+.sidebar-section .panel-grid {
+    padding: 10px;
+    max-height: 280px;
+    overflow-y: auto;
 }
 
 /* Panel Items Grid */
@@ -408,6 +474,76 @@ canvas#reserveCanvas {
     background: #27ae60;
 }
 
+/* Persistent 5-Slot Hotbar (Bottom Center) */
+.hotbar-container {
+    position: absolute;
+    bottom: 45px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 8px;
+    background: var(--bg-glass);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--border-color);
+    padding: 6px 10px;
+    border-radius: 12px;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5);
+    z-index: 50;
+}
+
+.hotbar-slot {
+    width: 52px;
+    height: 52px;
+    background: var(--bg-glass-card);
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.hotbar-slot:hover {
+    background: var(--bg-glass-hover);
+    border-color: var(--accent-gold);
+}
+
+.hotbar-slot.active {
+    border-color: var(--accent-gold);
+    box-shadow: 0 0 12px rgba(243, 156, 18, 0.6);
+    transform: translateY(-4px);
+    background: rgba(243, 156, 18, 0.15);
+}
+
+.hotbar-key {
+    position: absolute;
+    top: 2px;
+    left: 4px;
+    font-size: 0.65rem;
+    font-weight: bold;
+    color: var(--accent-gold);
+}
+
+.hotbar-icon {
+    font-size: 1.4rem;
+}
+
+.hotbar-count {
+    position: absolute;
+    bottom: 2px;
+    right: 4px;
+    font-size: 0.65rem;
+    font-weight: bold;
+    color: var(--text-main);
+    background: rgba(0, 0, 0, 0.6);
+    padding: 0 3px;
+    border-radius: 3px;
+}
+
 /* Minimap UI Widget in Bottom-Left Corner */
 .minimap-container {
     position: absolute;
@@ -427,6 +563,37 @@ canvas#reserveCanvas {
     width: 100%;
     height: 100%;
     display: block;
+}
+
+.minimap-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 5;
+}
+
+.minimap-controls button {
+    width: 22px;
+    height: 22px;
+    background: var(--bg-glass-card);
+    border: 1px solid var(--accent-gold);
+    color: var(--accent-gold);
+    border-radius: 50%;
+    font-size: 0.8rem;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+}
+
+.minimap-controls button:hover {
+    background: var(--accent-gold);
+    color: #000;
 }
 
 .minimap-label {
@@ -564,15 +731,22 @@ canvas#reserveCanvas {
     color: var(--text-main);
 }
 
-/* 20-Slot Inventory Grid Modal */
+/* 25-Slot Inventory Grid Modal */
 .inventory-card {
-    max-width: 580px;
+    max-width: 620px;
 }
 
 .inventory-grid {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
-    gap: 10px;
+    gap: 8px;
+    max-height: 420px;
+    overflow-y: auto;
+}
+
+.inventory-slot.hotbar-slot-marker {
+    border-color: var(--accent-gold);
+    background: rgba(243, 156, 18, 0.08);
 }
 
 .inventory-slot {

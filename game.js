@@ -18,10 +18,10 @@ function hashCoordinates(x, y) {
 
 /**
  * Dedicated Inventory Class
- * Manages 20 slot objects with max stack limit of 100 per resource type and spillover logic.
+ * Manages 25 slot objects (20 Backpack + 5 Hotbar) with max stack limit of 100 per resource type and spillover logic.
  */
 class Inventory {
-    constructor(slotCount = 20, maxStack = 100) {
+    constructor(slotCount = 25, maxStack = 100) {
         this.slotCount = slotCount;
         this.maxStack = maxStack;
         this.slots = Array.from({ length: slotCount }, () => ({ type: null, count: 0 }));
@@ -102,6 +102,136 @@ class Inventory {
             }
         }
         return remaining === 0;
+    }
+}
+
+/**
+ * PlantedSapling Class
+ * Ecological growth state machine: Sprout -> Young Tree -> Mature Tree
+ */
+class PlantedSapling {
+    constructor(id, x, y) {
+        this.id = id;
+        this.x = x;
+        this.y = y;
+        this.growthTime = 0;
+        this.stage = 'sprout'; // 'sprout' (0-10s), 'young' (10-25s), 'mature' (25s+)
+        this.isMature = false;
+    }
+
+    update(dt) {
+        if (this.isMature) return;
+
+        this.growthTime += dt;
+        if (this.growthTime >= 25) {
+            this.stage = 'mature';
+            this.isMature = true;
+        } else if (this.growthTime >= 10) {
+            this.stage = 'young';
+        }
+    }
+
+    render(ctx, images) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+
+        if (this.stage === 'sprout') {
+            ctx.fillStyle = '#2ecc71';
+            ctx.font = '16px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('🌱', 0, 0);
+        } else if (this.stage === 'young') {
+            ctx.fillStyle = '#27ae60';
+            ctx.font = '24px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('🌿', 0, 0);
+        } else {
+            // Render full tree
+            const treeImg = images['tree.png'];
+            if (treeImg && treeImg.complete) {
+                const drawSize = 22 * 2.8;
+                ctx.drawImage(treeImg, -drawSize / 2, -drawSize / 2, drawSize, drawSize);
+            } else {
+                ctx.fillStyle = '#1e5e27';
+                ctx.beginPath();
+                ctx.arc(0, 0, 22, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        ctx.restore();
+    }
+}
+
+/**
+ * DroppedItem Entity Class
+ * Physical Entity item spawned on the ground with bounce physics when resource nodes are harvested.
+ */
+class DroppedItem {
+    constructor(id, type, amount, x, y) {
+        this.id = id;
+        this.type = type; // 'wood', 'stone', 'sapling'
+        this.amount = amount;
+        this.x = x;
+        this.y = y;
+        this.radius = 14;
+
+        // Bounce physics parameters
+        this.vz = 70 + Math.random() * 30;
+        this.z = 0;
+        this.gravity = 250;
+        this.bounceFactor = 0.4;
+        this.bounces = 0;
+        this.isGround = false;
+
+        this.floatTimer = Math.random() * 10;
+    }
+
+    update(dt) {
+        if (!this.isGround) {
+            this.z += this.vz * dt;
+            this.vz -= this.gravity * dt;
+            if (this.z <= 0) {
+                this.z = 0;
+                if (Math.abs(this.vz) > 15 && this.bounces < 2) {
+                    this.vz = -this.vz * this.bounceFactor;
+                    this.bounces++;
+                } else {
+                    this.vz = 0;
+                    this.isGround = true;
+                }
+            }
+        }
+        this.floatTimer += dt * 3;
+    }
+
+    render(ctx) {
+        ctx.save();
+        const floatOffset = this.isGround ? Math.sin(this.floatTimer) * 3 : 0;
+        const renderY = this.y - this.z - floatOffset;
+        ctx.translate(this.x, renderY);
+
+        // Shadow on ground
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+        ctx.beginPath();
+        ctx.ellipse(0, this.z + 8, 12, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        const iconMap = { wood: '🪵', stone: '🪨', sapling: '🌱' };
+        ctx.font = '16px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(iconMap[this.type] || '📦', 0, 0);
+
+        if (this.amount > 1) {
+            ctx.fillStyle = '#f39c12';
+            ctx.font = 'bold 10px sans-serif';
+            ctx.fillText(`x${this.amount}`, 10, 8);
+        }
+
+        ctx.restore();
     }
 }
 
@@ -429,6 +559,14 @@ class Player {
         this.facingLeft = false;
         this.screenShakeTimer = 0;
         this.screenShakeIntensity = 0;
+
+        // Player Survival Stats
+        this.hp = 100;
+        this.maxHp = 100;
+        this.thirst = 100;
+        this.maxThirst = 100;
+        this.thirstDepleteRate = 1.2; // Thirst per second
+        this.starveHpDepleteRate = 2.5; // HP loss per second when Thirst is 0
     }
 
     get speed() {
@@ -479,6 +617,12 @@ class Player {
     update(dt, keys, resourceNodes, placedBuildings) {
         if (this.screenShakeTimer > 0) {
             this.screenShakeTimer = Math.max(0, this.screenShakeTimer - dt);
+        }
+
+        // Update Survival Mechanics: Thirst & HP
+        this.thirst = Math.max(0, this.thirst - this.thirstDepleteRate * dt);
+        if (this.thirst <= 0) {
+            this.hp = Math.max(0, this.hp - this.starveHpDepleteRate * dt);
         }
 
         let dx = 0;
@@ -1044,6 +1188,9 @@ class ReserveGame {
         // Fog of War & Minimap Systems
         this.revealedChunks = new Set();
         this.fogSightRadius = 450;
+        this.minimapZoom = 1.0;
+        this.minMinimapZoom = 0.5;
+        this.maxMinimapZoom = 2.5;
 
         // RPG Buff Modifiers
         this.buffs = {
@@ -1054,11 +1201,14 @@ class ReserveGame {
         };
 
         // OOP Managers & Entities
-        this.inventory = new Inventory(20, 100); // 20 slots, 100 max stack
+        this.inventory = new Inventory(25, 100); // 25 slots (20 Backpack + 5 Hotbar), 100 max stack
+        this.activeHotbarIndex = 0; // 0 to 4 (corresponding to slots 20 to 24)
         this.chunkManager = new ChunkManager(1000, 2);
         this.player = new Player(250, 250);
         this.waterhole = new Waterhole(this.reserve.x + 500, this.reserve.y + 500);
 
+        this.droppedItems = [];
+        this.plantedSaplings = [];
         this.rangers = [];
         this.furnaces = [];
         this.renderedAnimals = [];
@@ -1080,9 +1230,10 @@ class ReserveGame {
         this.activeFurnace = null;
         this.activeCrate = null;
 
-        // Initial Seed Resources into 20-slot Inventory
+        // Initial Seed Resources into 25-slot Inventory & Hotbar
         this.inventory.addItem('wood', 30);
         this.inventory.addItem('stone', 15);
+        this.inventory.addItem('sapling', 3);
 
         // Asset Preloading
         this.images = {};
@@ -1151,6 +1302,10 @@ class ReserveGame {
             if (k in this.keys) {
                 this.keys[k] = true;
             }
+            if (['1', '2', '3', '4', '5'].includes(e.key)) {
+                this.activeHotbarIndex = parseInt(e.key, 10) - 1;
+                this.updateHotbarUI();
+            }
             if (e.key === 'e' || e.key === 'E') {
                 this.toggleInventoryModal();
             }
@@ -1194,6 +1349,34 @@ class ReserveGame {
     }
 
     setupUIControls() {
+        const zoomInBtn = document.getElementById('minimap-zoom-in');
+        if (zoomInBtn) {
+            zoomInBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.minimapZoom = Math.min(this.maxMinimapZoom, this.minimapZoom + 0.25);
+            });
+        }
+
+        const zoomOutBtn = document.getElementById('minimap-zoom-out');
+        if (zoomOutBtn) {
+            zoomOutBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.minimapZoom = Math.max(this.minMinimapZoom, this.minimapZoom - 0.25);
+            });
+        }
+
+        const minimapContainer = document.querySelector('.minimap-container');
+        if (minimapContainer) {
+            minimapContainer.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                if (e.deltaY < 0) {
+                    this.minimapZoom = Math.min(this.maxMinimapZoom, this.minimapZoom + 0.15);
+                } else {
+                    this.minimapZoom = Math.max(this.minMinimapZoom, this.minimapZoom - 0.15);
+                }
+            }, { passive: false });
+        }
+
         const closeFurnaceBtn = document.getElementById('close-furnace-btn');
         if (closeFurnaceBtn) {
             closeFurnaceBtn.addEventListener('click', () => this.closeFurnaceModal());
@@ -1260,10 +1443,40 @@ class ReserveGame {
         }, 3000);
     }
 
-    // World Clicks: Harvesting, Furnace, and Crates
+    // World Clicks: Planting Saplings, Harvesting, Waterhole, Furnace, and Crates
     handleWorldClick() {
         const mx = this.mouse.worldX;
         const my = this.mouse.worldY;
+
+        // 0. Check Sapling Planting (Ecological Cycle)
+        const activeItemSlot = this.getActiveHotbarItem();
+        if (activeItemSlot && activeItemSlot.type === 'sapling') {
+            const isInsideReserve = (
+                mx >= this.reserve.x &&
+                mx <= this.reserve.x + this.reserve.width &&
+                my >= this.reserve.y &&
+                my <= this.reserve.y + this.reserve.height
+            );
+
+            if (isInsideReserve) {
+                this.showNotification('Saplings can only be planted in the wild outside the reserve!');
+                return;
+            }
+
+            const distToPlayer = Math.hypot(this.player.x - mx, this.player.y - my);
+            if (distToPlayer > 150) {
+                this.showNotification('Move closer to plant the sapling!');
+                return;
+            }
+
+            // Consume 1 sapling and plant
+            this.inventory.consumeItem('sapling', 1);
+            this.plantedSaplings.push(new PlantedSapling(`sapling_${Date.now()}`, mx, my));
+            this.addFloatingText('🌱 Planted Sapling!', mx, my - 15, '#2ecc71');
+            this.showNotification('Planted a Sapling! It will grow into a mature tree over time.');
+            this.updateUI();
+            return;
+        }
 
         // 1. Check Crate Interactivity
         const allCrates = this.chunkManager.getAllCrates();
@@ -1282,7 +1495,40 @@ class ReserveGame {
             }
         }
 
-        // 2. Check Furnace Click
+        // 2. Check Waterhole Click & Interaction (Replenish Thirst & HP)
+        const distToWaterhole = Math.hypot(this.player.x - this.waterhole.x, this.player.y - this.waterhole.y);
+        const clickDistToWaterhole = Math.hypot(mx - this.waterhole.x, my - this.waterhole.y);
+
+        if (clickDistToWaterhole <= this.waterhole.radiusX + 20) {
+            if (distToWaterhole <= this.waterhole.radiusX + 60) {
+                if (this.player.thirst >= this.player.maxThirst && this.player.hp >= this.player.maxHp) {
+                    this.showNotification('Thirst & Health are already full!');
+                    return;
+                }
+                if (this.waterhole.waterLevel <= 0) {
+                    this.showNotification('Waterhole is empty! Wait for rain or ranger refill.');
+                    return;
+                }
+
+                // Transfer water to player
+                const neededThirst = this.player.maxThirst - this.player.thirst;
+                const drank = this.waterhole.drink(Math.min(neededThirst > 0 ? neededThirst : 20, 25));
+
+                this.player.thirst = Math.min(this.player.maxThirst, this.player.thirst + drank);
+                if (this.player.hp < this.player.maxHp) {
+                    this.player.hp = Math.min(this.player.maxHp, this.player.hp + drank * 0.5);
+                }
+
+                this.addFloatingText(`+${Math.round(drank)} Water`, this.player.x, this.player.y - 20, '#3498db');
+                this.showNotification('Replenished thirst from the Reserve Waterhole!');
+                return;
+            } else {
+                this.showNotification('Move closer to the Waterhole to drink!');
+                return;
+            }
+        }
+
+        // 3. Check Furnace Click
         for (const furnace of this.furnaces) {
             const halfW = furnace.width / 2;
             const halfH = furnace.height / 2;
@@ -1319,23 +1565,25 @@ class ReserveGame {
         }
 
         if (targetNode) {
-            // Check inventory capacity before harvesting
-            if (!this.inventory.canAddItem(targetNode.type, 1)) {
-                this.showNotification('Backpack Full! Press [E] to view inventory.');
-                return;
-            }
-
             const result = targetNode.hit(1, this.buffs.harvestYieldBonus);
             this.player.triggerScreenShake(5, 0.12);
 
             if (result.destroyed) {
                 this.chunkManager.removeResourceNode(targetNode.id);
-                this.inventory.addItem(result.type, result.yieldAmount);
 
-                const itemLabel = result.type === 'wood' ? 'Wood' : 'Stone';
-                const color = result.type === 'wood' ? '#2ecc71' : '#bdc3c7';
-                this.addFloatingText(`+${result.yieldAmount} ${itemLabel}`, targetNode.x, targetNode.y - 10, color);
-                this.updateUI();
+                // Spawn physical entity drops on ground instead of directly giving items
+                if (result.type === 'wood') {
+                    // Drop wood + 1 sapling drop
+                    this.droppedItems.push(new DroppedItem(`drop_${Date.now()}_w`, 'wood', result.yieldAmount, targetNode.x, targetNode.y));
+                    if (Math.random() < 0.7) {
+                        this.droppedItems.push(new DroppedItem(`drop_${Date.now()}_s`, 'sapling', 1, targetNode.x + (Math.random() - 0.5) * 20, targetNode.y + (Math.random() - 0.5) * 20));
+                    }
+                } else {
+                    // Drop stone
+                    this.droppedItems.push(new DroppedItem(`drop_${Date.now()}_st`, 'stone', result.yieldAmount, targetNode.x, targetNode.y));
+                }
+
+                this.addFloatingText(`Destroyed!`, targetNode.x, targetNode.y - 10, '#f1c40f');
             } else {
                 this.addFloatingText(`Hit! (${result.hp}/5)`, targetNode.x, targetNode.y - 10, '#e74c3c');
             }
@@ -1359,6 +1607,44 @@ class ReserveGame {
         if (modal) modal.classList.add('hidden');
     }
 
+    updateHotbarUI() {
+        const iconMap = {
+            wood: '🪵',
+            stone: '🪨',
+            processedStone: '🧱',
+            sapling: '🌱'
+        };
+
+        const container = document.getElementById('hotbar-container');
+        if (!container) return;
+
+        const slotEls = container.querySelectorAll('.hotbar-slot');
+        slotEls.forEach((slotEl, i) => {
+            const isSelected = (i === this.activeHotbarIndex);
+            slotEl.className = `hotbar-slot ${isSelected ? 'active' : ''}`;
+
+            const itemSlot = this.inventory.slots[20 + i]; // Slots 20..24 are hotbar
+            const iconDiv = slotEl.querySelector('.hotbar-icon');
+            const countSpan = slotEl.querySelector('.hotbar-count');
+
+            if (itemSlot && itemSlot.count > 0 && itemSlot.type) {
+                if (iconDiv) iconDiv.textContent = iconMap[itemSlot.type] || '📦';
+                if (countSpan) countSpan.textContent = itemSlot.count;
+            } else {
+                if (iconDiv) iconDiv.textContent = '';
+                if (countSpan) countSpan.textContent = '';
+            }
+        });
+    }
+
+    getActiveHotbarItem() {
+        const slot = this.inventory.slots[20 + this.activeHotbarIndex];
+        if (slot && slot.count > 0) {
+            return slot;
+        }
+        return null;
+    }
+
     renderInventoryGrid() {
         const grid = document.getElementById('inventory-grid');
         if (!grid) return;
@@ -1367,18 +1653,23 @@ class ReserveGame {
         const iconMap = {
             wood: '🪵',
             stone: '🪨',
-            processedStone: '🧱'
+            processedStone: '🧱',
+            sapling: '🌱'
         };
 
         const nameMap = {
             wood: 'Wood',
             stone: 'Stone',
-            processedStone: 'P-Stone'
+            processedStone: 'P-Stone',
+            sapling: 'Sapling'
         };
 
         this.inventory.slots.forEach((slot, index) => {
+            const isHotbarSlot = index >= 20;
             const slotEl = document.createElement('div');
-            slotEl.className = `inventory-slot ${slot.count === 0 ? 'empty' : ''}`;
+            slotEl.className = `inventory-slot ${slot.count === 0 ? 'empty' : ''} ${isHotbarSlot ? 'hotbar-slot-marker' : ''}`;
+
+            const labelText = isHotbarSlot ? `H${index - 19}` : `${index + 1}`;
 
             if (slot.count > 0 && slot.type) {
                 slotEl.innerHTML = `
@@ -1387,7 +1678,7 @@ class ReserveGame {
                     <div class="slot-count-badge">${slot.count}</div>
                 `;
             } else {
-                slotEl.innerHTML = `<span style="font-size:0.7rem; color:var(--text-muted);">${index + 1}</span>`;
+                slotEl.innerHTML = `<span style="font-size:0.7rem; color:var(--text-muted);">${labelText}</span>`;
             }
 
             grid.appendChild(slotEl);
@@ -1631,6 +1922,47 @@ class ReserveGame {
         });
     }
 
+    updateDroppedItems(dt) {
+        for (let i = this.droppedItems.length - 1; i >= 0; i--) {
+            const item = this.droppedItems[i];
+            item.update(dt);
+
+            // Pickup Collision check with player
+            const dist = Math.hypot(this.player.x - item.x, this.player.y - item.y);
+            if (dist <= this.player.radius + item.radius) {
+                if (this.inventory.canAddItem(item.type, item.amount)) {
+                    this.inventory.addItem(item.type, item.amount);
+                    const label = item.type.charAt(0).toUpperCase() + item.type.slice(1);
+                    this.addFloatingText(`+${item.amount} ${label}`, item.x, item.y - 15, '#2ecc71');
+                    this.droppedItems.splice(i, 1);
+                    this.updateUI();
+                } else {
+                    this.showNotification('Backpack Full! Cannot pickup item.');
+                }
+            }
+        }
+    }
+
+    updatePlantedSaplings(dt) {
+        for (let i = this.plantedSaplings.length - 1; i >= 0; i--) {
+            const sapling = this.plantedSaplings[i];
+            sapling.update(dt);
+
+            if (sapling.isMature) {
+                // Convert mature sapling into full harvestable ResourceNode in active chunk
+                const chunkX = Math.floor(sapling.x / 1000);
+                const chunkY = Math.floor(sapling.y / 1000);
+                const chunkKey = `${chunkX},${chunkY}`;
+                const chunk = this.chunkManager.loadedChunks.get(chunkKey);
+                if (chunk) {
+                    chunk.resourceNodes.push(new ResourceNode(`node_grown_${Date.now()}_${i}`, 'wood', sapling.x, sapling.y));
+                }
+                this.plantedSaplings.splice(i, 1);
+                this.addFloatingText('🌳 Tree Fully Grown!', sapling.x, sapling.y - 20, '#2ecc71');
+            }
+        }
+    }
+
     updateFloatingTexts(dt) {
         for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
             const ft = this.floatingTexts[i];
@@ -1729,6 +2061,19 @@ class ReserveGame {
         }, this.tickInterval);
     }
 
+    updateSurvivalHUD() {
+        const hpFill = document.getElementById('player-hp-fill');
+        const thirstFill = document.getElementById('player-thirst-fill');
+        if (hpFill) {
+            const hpPct = Math.max(0, Math.min(100, (this.player.hp / this.player.maxHp) * 100));
+            hpFill.style.width = `${hpPct}%`;
+        }
+        if (thirstFill) {
+            const thirstPct = Math.max(0, Math.min(100, (this.player.thirst / this.player.maxThirst) * 100));
+            thirstFill.style.width = `${thirstPct}%`;
+        }
+    }
+
     startRenderLoop() {
         const frame = (timestamp) => {
             const dt = Math.min(0.1, (timestamp - this.lastFrameTime) / 1000);
@@ -1744,7 +2089,10 @@ class ReserveGame {
             this.chunkManager.update(this.player.x, this.player.y, this.reserve, dt);
 
             this.rangers.forEach(r => r.update(dt, this.waterhole));
+            this.updateDroppedItems(dt);
+            this.updatePlantedSaplings(dt);
             this.updateFloatingTexts(dt);
+            this.updateSurvivalHUD();
 
             this.render();
             this.renderMinimap();
@@ -1792,15 +2140,10 @@ class ReserveGame {
         const elCap = document.getElementById('stat-capacity');
         if (elCap) elCap.textContent = `${this.getCurrentAnimalCount()} / ${this.getTotalCapacity()}`;
 
-        const elWood = document.getElementById('stat-wood');
-        if (elWood) elWood.textContent = this.inventory.getItemCount('wood');
-
-        const elStone = document.getElementById('stat-stone');
-        if (elStone) elStone.textContent = this.inventory.getItemCount('stone');
-
         const elPStone = document.getElementById('stat-pstone');
         if (elPStone) elPStone.textContent = this.inventory.getItemCount('processedStone');
 
+        this.updateHotbarUI();
         this.syncRangersWithInfrastructure();
         this.renderAnimalMarket();
         this.renderRangerHiring();
@@ -1837,11 +2180,12 @@ class ReserveGame {
                     <div class="card-icon">${iconHTML}</div>
                     <div class="card-title-group">
                         <h4>${animal.name} (${animal.gender}, ${animal.age}y)</h4>
-                        <span class="card-sub">Tier ${animal.enclosureTierReq} Enclosure</span>
+                        <span class="card-sub">From: <strong>${animal.sellerReserve || 'Wild Reserve'}</strong></span>
                     </div>
                 </div>
                 <p class="card-body">${animal.description}</p>
                 <div class="card-stats">
+                    <span class="badge">Tier ${animal.enclosureTierReq} Fence</span>
                     <span class="badge">Cost: $${animal.cost}</span>
                     <span class="badge badge-good">+${animal.attractionScore} Attr</span>
                 </div>
@@ -2085,7 +2429,7 @@ class ReserveGame {
         grid.appendChild(fenceCard);
     }
 
-    // Circular Minimap Renderer (Tracking Player, Reserve, Unlooted Crates in Revealed Fog)
+    // Circular Minimap Renderer (Tracking Player, Reserve, Unlooted Crates, Zoom, and Off-Screen HQ Indicator)
     renderMinimap() {
         if (!this.minimapCtx || !this.minimapCanvas) return;
         const ctx = this.minimapCtx;
@@ -2104,8 +2448,9 @@ class ReserveGame {
         ctx.fillStyle = '#0a100d';
         ctx.fillRect(0, 0, w, h);
 
-        // Minimap Scale: 4000x4000 world region centered on Player
-        const scale = 0.035;
+        // Base scale multiplied by dynamic minimap zoom factor
+        const baseScale = 0.035;
+        const scale = baseScale * this.minimapZoom;
         const centerX = w / 2;
         const centerY = h / 2;
 
@@ -2147,6 +2492,40 @@ class ReserveGame {
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 1;
         ctx.stroke();
+
+        // Check Reserve HQ Off-Screen Status and Render Directional Indicator Arrow
+        const hqWorldX = this.reserve.x + 150;
+        const hqWorldY = this.reserve.y + 135;
+        const hqPos = worldToMinimap(hqWorldX, hqWorldY);
+
+        const radiusMap = w / 2 - 10;
+        const distFromCenter = Math.hypot(hqPos.x - centerX, hqPos.y - centerY);
+
+        if (distFromCenter > radiusMap) {
+            // Reserve HQ is off-screen on the minimap, draw edge directional arrow
+            const angle = Math.atan2(hqPos.y - centerY, hqPos.x - centerX);
+            const arrowX = centerX + Math.cos(angle) * radiusMap;
+            const arrowY = centerY + Math.sin(angle) * radiusMap;
+
+            ctx.save();
+            ctx.translate(arrowX, arrowY);
+            ctx.rotate(angle);
+
+            ctx.fillStyle = '#f39c12';
+            ctx.beginPath();
+            ctx.moveTo(8, 0);
+            ctx.lineTo(-6, -6);
+            ctx.lineTo(-3, 0);
+            ctx.lineTo(-6, 6);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.restore();
+        } else {
+            // Reserve HQ is visible on minimap
+            ctx.fillStyle = '#e67e22';
+            ctx.fillRect(hqPos.x - 4, hqPos.y - 4, 8, 8);
+        }
 
         ctx.restore();
     }
@@ -2248,6 +2627,22 @@ class ReserveGame {
 
         // 3. Render Infinite Procedural Chunks
         this.chunkManager.render(this.ctx, this.images, viewBounds);
+
+        // Render Physical Dropped Ground Items
+        this.droppedItems.forEach(item => {
+            if (item.x + item.radius >= viewBounds.minX && item.x - item.radius <= viewBounds.maxX &&
+                item.y + item.radius >= viewBounds.minY && item.y - item.radius <= viewBounds.maxY) {
+                item.render(this.ctx);
+            }
+        });
+
+        // Render Planted Saplings
+        this.plantedSaplings.forEach(sapling => {
+            if (sapling.x + 20 >= viewBounds.minX && sapling.x - 20 <= viewBounds.maxX &&
+                sapling.y + 20 >= viewBounds.minY && sapling.y - 20 <= viewBounds.maxY) {
+                sapling.render(this.ctx, this.images);
+            }
+        });
 
         // 4. Render Placed Buildings & Furnaces
         this.state.placedBuildings.forEach(b => {
