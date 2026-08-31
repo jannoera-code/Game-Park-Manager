@@ -431,8 +431,7 @@ const TUTORIAL_CHECKLISTS = [
         tasks: [
             { id: 'click_worker', text: '1. Click the worker to inspect their status', type: 'event', eventKey: 'clickedWorker' },
             { id: 'assign_hq', text: '2. Assign them to the Reserve HQ', type: 'event', eventKey: 'assignedWorkerHQ' },
-            { id: 'assign_job_pet', text: '3. Assign their job/companion dog', type: 'event', eventKey: 'assignedJobOrPet' },
-            { id: 'command_gathering', text: '4. Command their first resource gathering task', type: 'event', eventKey: 'commandedFirstTask' }
+            { id: 'assign_job_pet', text: '3. Assign their job/companion dog', type: 'event', eventKey: 'assignedJobOrPet' }
         ]
     },
     {
