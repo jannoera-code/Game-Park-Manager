@@ -257,7 +257,6 @@ class SaveManager {
                 fenceTier: game.state.fenceTier,
                 weeklyStats: game.weeklyStats,
                 buffs: game.buffs,
-                isCreativeMode: game.state.isCreativeMode,
                 tutorialIndex: game.state.tutorialIndex || 0,
                 tutorialEvents: game.state.tutorialEvents || {}
             }
@@ -301,7 +300,6 @@ class SaveManager {
             game.state.dayProgress = (game.timeElapsedInDay / game.dayDuration) * 100;
             game.state.campTier = data.economy.campTier ?? 1;
             game.state.fenceTier = data.economy.fenceTier ?? 1;
-            game.state.isCreativeMode = !!data.economy.isCreativeMode;
             game.state.tutorialIndex = data.economy.tutorialIndex ?? 0;
             game.state.tutorialEvents = data.economy.tutorialEvents || {};
             if (data.economy.weeklyStats) game.weeklyStats = data.economy.weeklyStats;
@@ -1304,82 +1302,69 @@ class Player {
             this.screenShakeTimer = Math.max(0, this.screenShakeTimer - dt);
         }
 
-        // Creative Mode Survival Bypass
-        if (window.game && window.game.state.isCreativeMode) {
-            this.hp = 100;
-            this.maxHp = 100;
-            this.thirst = 100;
-            this.maxThirst = 100;
-            this.hunger = 100;
-            this.maxHunger = 100;
-            this.speedPenaltyMult = 1.0;
-            this.starvingTimer = 0;
-            this.dehydratedTimer = 0;
+        // Pause Hunger and Thirst depletion if player is sleeping or in cabin/HQ menu or morning recap
+        const isCabinMenuOpen = window.game && (
+            !document.getElementById('hq-modal')?.classList.contains('hidden') ||
+            !document.getElementById('morning-recap-modal')?.classList.contains('hidden') ||
+            window.game.isSleeping
+        );
+
+        if (!isCabinMenuOpen) {
+            this.thirst = Math.max(0, this.thirst - this.thirstDepleteRate * dt);
+            this.hunger = Math.max(0, this.hunger - this.hungerDepleteRate * dt);
+        }
+
+        // Track time spent in base starving/dehydrated states
+        if (this.hunger <= 0) {
+            this.starvingTimer += dt;
         } else {
-            // Pause Hunger and Thirst depletion if player is sleeping or in cabin/HQ menu or morning recap
-            const isCabinMenuOpen = window.game && (
-                !document.getElementById('hq-modal')?.classList.contains('hidden') ||
-                !document.getElementById('morning-recap-modal')?.classList.contains('hidden') ||
-                window.game.isSleeping
-            );
+            this.starvingTimer = 0;
+        }
 
-            if (!isCabinMenuOpen) {
-                this.thirst = Math.max(0, this.thirst - this.thirstDepleteRate * dt);
-                this.hunger = Math.max(0, this.hunger - this.hungerDepleteRate * dt);
-            }
+        if (this.thirst <= 0) {
+            this.dehydratedTimer += dt;
+        } else {
+            this.dehydratedTimer = 0;
+        }
 
-            // Track time spent in base starving/dehydrated states
-            if (this.hunger <= 0) {
-                this.starvingTimer += dt;
+        // Determine critical status threshold: 2 in-game days = 2 * 300s = 600s
+        const criticalThreshold = 600;
+
+        let maxHpPenalty = 0;
+        let speedPenalty = 0;
+
+        if (this.hunger <= 0) {
+            if (this.starvingTimer >= criticalThreshold) {
+                maxHpPenalty += 0.50;
+                speedPenalty += 0.20;
             } else {
-                this.starvingTimer = 0;
+                maxHpPenalty += 0.25;
+                speedPenalty += 0.10;
             }
+        }
 
-            if (this.thirst <= 0) {
-                this.dehydratedTimer += dt;
+        if (this.thirst <= 0) {
+            if (this.dehydratedTimer >= criticalThreshold) {
+                maxHpPenalty += 0.50;
+                speedPenalty += 0.20;
             } else {
-                this.dehydratedTimer = 0;
+                maxHpPenalty += 0.25;
+                speedPenalty += 0.10;
             }
+        }
 
-            // Determine critical status threshold: 2 in-game days = 2 * 300s = 600s
-            const criticalThreshold = 600;
+        this.maxHp = Math.max(0, Math.round(this.baseMaxHp * (1 - maxHpPenalty)));
+        this.speedPenaltyMult = Math.max(0, 1 - speedPenalty);
+        this.hp = Math.min(this.hp, this.maxHp);
 
-            let maxHpPenalty = 0;
-            let speedPenalty = 0;
+        if (this.thirst <= 0 || this.hunger <= 0) {
+            this.hp = Math.max(0, this.hp - this.starveHpDepleteRate * dt);
+        }
 
-            if (this.hunger <= 0) {
-                if (this.starvingTimer >= criticalThreshold) {
-                    maxHpPenalty += 0.50;
-                    speedPenalty += 0.20;
-                } else {
-                    maxHpPenalty += 0.25;
-                    speedPenalty += 0.10;
-                }
-            }
-
-            if (this.thirst <= 0) {
-                if (this.dehydratedTimer >= criticalThreshold) {
-                    maxHpPenalty += 0.50;
-                    speedPenalty += 0.20;
-                } else {
-                    maxHpPenalty += 0.25;
-                    speedPenalty += 0.10;
-                }
-            }
-
-            this.maxHp = Math.max(0, Math.round(this.baseMaxHp * (1 - maxHpPenalty)));
-            this.speedPenaltyMult = Math.max(0, 1 - speedPenalty);
-            this.hp = Math.min(this.hp, this.maxHp);
-
-            if (this.thirst <= 0 || this.hunger <= 0) {
-                this.hp = Math.max(0, this.hp - this.starveHpDepleteRate * dt);
-            }
-
-            // Trigger Death Sequence if HP <= 0 or Max HP <= 0
-            if (this.hp <= 0 || this.maxHp <= 0) {
-                if (window.game) {
-                    window.game.handlePlayerDeath();
-                }
+        // Trigger Death Sequence if HP <= 0 or Max HP <= 0
+        if (this.hp <= 0 || this.maxHp <= 0) {
+            if (window.game) {
+                window.game.handlePlayerDeath();
             }
         }
 
@@ -4398,9 +4383,11 @@ class ReserveGame {
         const petContainer = document.getElementById('hq-pet-slots');
         const sleepBox = document.getElementById('hq-sleep-container');
 
-        // Human Resident Slot (1 Max - Player)
+        // Human Resident Slots (Player + Hired Rangers assigned to Reserve HQ)
         if (humanContainer) {
             humanContainer.innerHTML = '';
+
+            // Player Slot
             const slotCard = document.createElement('div');
             slotCard.className = `slot-card ${this.isPlayerAssignedToHQ ? 'filled' : 'empty'}`;
 
@@ -4431,6 +4418,27 @@ class ReserveGame {
                 });
             }
             humanContainer.appendChild(slotCard);
+
+            // Hired Rangers assigned to HQ
+            const hqRangers = this.state.hiredRangers.filter(r => r.assignedBuilding === 'reserve_hq');
+            hqRangers.forEach(hired => {
+                const rangerCard = document.createElement('div');
+                rangerCard.className = 'slot-card filled';
+                rangerCard.innerHTML = `
+                    <div class="slot-icon">🤠</div>
+                    <div class="slot-title">${hired.name}</div>
+                    <div class="slot-sub">Resident Worker</div>
+                    <button class="action-btn small-btn" style="background: var(--accent-red); color: white; margin-top: 6px;">Unassign</button>
+                `;
+                rangerCard.querySelector('button').addEventListener('click', () => {
+                    hired.assignedBuilding = null;
+                    this.syncRangersWithInfrastructure();
+                    this.updateHqModalUI();
+                    this.updateUI();
+                    this.showNotification(`Unassigned ${hired.name} from Reserve HQ.`);
+                });
+                humanContainer.appendChild(rangerCard);
+            });
         }
 
         // Pet Companion Slot (1 Max - Dog Jock)
@@ -4591,7 +4599,7 @@ class ReserveGame {
         const buffSelect = document.getElementById('worker-buff-select');
 
         if (nameEl) nameEl.textContent = hiredData.name;
-        if (statusEl) statusEl.textContent = `Status: ${rangerEntity.state} | Job: ${hiredData.job || 'None'}`;
+        if (statusEl) statusEl.textContent = `Status: ${rangerEntity.state || 'Idle'} | Job: ${hiredData.job || 'None'}`;
 
         // Populate Housing Options
         if (housingSelect) {
@@ -4618,14 +4626,40 @@ class ReserveGame {
             });
 
             housingSelect.value = hiredData.assignedBuilding || 'reserve_hq';
+
+            // Instant updates on housing change
+            housingSelect.onchange = () => {
+                const chosenHousing = housingSelect.value || null;
+                hiredData.assignedBuilding = chosenHousing;
+                if (chosenHousing === 'reserve_hq') {
+                    this.recordTutorialEvent('assignedWorkerHQ');
+                }
+                this.syncRangersWithInfrastructure();
+                this.updateUI();
+                if (this.activeRangerHut) this.updateRangerHutModalUI();
+                const hqModal = document.getElementById('hq-modal');
+                if (hqModal && !hqModal.classList.contains('hidden')) this.updateHqModalUI();
+                this.showNotification(`Housing updated for ${hiredData.name}!`);
+            };
         }
 
-        // Job Option
+        // Job Option - Instant updates on job change
         if (jobSelect) {
             jobSelect.value = hiredData.job || '';
+            jobSelect.onchange = () => {
+                const chosenJob = jobSelect.value || null;
+                hiredData.job = chosenJob;
+                if (chosenJob) {
+                    this.recordTutorialEvent('assignedJobOrPet');
+                }
+                this.syncRangersWithInfrastructure();
+                this.updateUI();
+                if (statusEl) statusEl.textContent = `Status: ${rangerEntity.state || 'Idle'} | Job: ${hiredData.job || 'None'}`;
+                this.showNotification(`Job updated for ${hiredData.name}!`);
+            };
         }
 
-        // Buff Options
+        // Buff Options - Instant updates on buff change
         if (buffSelect) {
             buffSelect.innerHTML = '';
             const noBuffOpt = document.createElement('option');
@@ -4643,46 +4677,24 @@ class ReserveGame {
             }
 
             buffSelect.value = hiredData.buff ? hiredData.buff.id : '';
-            if (hiredData.buff) {
-                buffSelect.disabled = true; // Permanent once selected
-            } else {
-                buffSelect.disabled = false;
-            }
-        }
+            buffSelect.disabled = !!hiredData.buff;
 
-        modal.classList.remove('hidden');
-
-        // Save Button Handler
-        const saveBtn = document.getElementById('save-worker-assignment-btn');
-        if (saveBtn) {
-            saveBtn.onclick = () => {
-                const chosenHousing = housingSelect ? housingSelect.value : null;
-                const chosenJob = jobSelect ? jobSelect.value : null;
-                const chosenBuffId = buffSelect ? buffSelect.value : null;
-
-                hiredData.assignedBuilding = chosenHousing;
-                hiredData.job = chosenJob;
-
-                if (chosenHousing === 'reserve_hq') {
-                    this.recordTutorialEvent('assignedWorkerHQ');
-                }
-                if (chosenJob) {
-                    this.recordTutorialEvent('assignedJobOrPet');
-                }
-
+            buffSelect.onchange = () => {
+                const chosenBuffId = buffSelect.value;
                 if (chosenBuffId && !hiredData.buff) {
                     const buffDef = WORKER_BUFF_OPTIONS.find(b => b.id === chosenBuffId);
                     if (buffDef) {
                         hiredData.buff = buffDef;
+                        buffSelect.disabled = true;
+                        this.syncRangersWithInfrastructure();
+                        this.updateUI();
+                        this.showNotification(`Assigned permanent buff ${buffDef.title} to ${hiredData.name}!`);
                     }
                 }
-
-                this.syncRangersWithInfrastructure();
-                this.showNotification(`Updated assignment for ${hiredData.name}!`);
-                this.closeWorkerManagementModal();
-                this.updateUI();
             };
         }
+
+        modal.classList.remove('hidden');
     }
 
     closeWorkerManagementModal() {
@@ -4951,14 +4963,14 @@ class ReserveGame {
     }
 
     // Half-Screen Management Modal System
-    openManagementModal(category = 'animals') {
+    openManagementModal(category = 'rangers') {
         this.player.isMovementLocked = true;
         const modal = document.getElementById('management-modal');
         const titleEl = document.getElementById('management-modal-title');
 
         const titleMap = {
             animals: '🦁 Marketplace Animals',
-            rangers: '🤠 Recruit Rangers',
+            rangers: '🤠 Worker Management',
             building: '🔨 Crafting & Building',
             upgrades: '🏗️ Reserve Upgrades'
         };
@@ -5017,12 +5029,11 @@ class ReserveGame {
             const saplingCount = this.inventory.getItemCount('sapling');
             const scrapsCount = this.inventory.getItemCount('scraps');
 
-            const canAfford = this.state.isCreativeMode || (
-                              woodCount >= (itemDef.woodCost || 0) &&
+            const canAfford = woodCount >= (itemDef.woodCost || 0) &&
                               stoneCount >= (itemDef.stoneCost || 0) &&
                               pStoneCount >= (itemDef.processedStoneCost || 0) &&
                               saplingCount >= (itemDef.saplingCost || 0) &&
-                              scrapsCount >= (itemDef.scrapsCost || 0));
+                              scrapsCount >= (itemDef.scrapsCost || 0);
 
             const card = document.createElement('div');
             card.className = 'item-card';
@@ -5057,13 +5068,11 @@ class ReserveGame {
                 btn.addEventListener('click', () => {
                     if (itemDef.type === 'item') {
                         if (this.inventory.canAddItem(itemDef.id, 1)) {
-                            if (!this.state.isCreativeMode) {
-                                this.inventory.consumeItem('wood', itemDef.woodCost || 0);
-                                this.inventory.consumeItem('stone', itemDef.stoneCost || 0);
-                                this.inventory.consumeItem('processedStone', itemDef.processedStoneCost || 0);
-                                if (itemDef.saplingCost) this.inventory.consumeItem('sapling', itemDef.saplingCost);
-                                if (itemDef.scrapsCost) this.inventory.consumeItem('scraps', itemDef.scrapsCost);
-                            }
+                            this.inventory.consumeItem('wood', itemDef.woodCost || 0);
+                            this.inventory.consumeItem('stone', itemDef.stoneCost || 0);
+                            this.inventory.consumeItem('processedStone', itemDef.processedStoneCost || 0);
+                            if (itemDef.saplingCost) this.inventory.consumeItem('sapling', itemDef.saplingCost);
+                            if (itemDef.scrapsCost) this.inventory.consumeItem('scraps', itemDef.scrapsCost);
                             this.inventory.addItem(itemDef.id, 1);
                             this.showNotification(`Crafted 1x ${itemDef.name}!`);
                             this.updateUI();
@@ -5084,10 +5093,6 @@ class ReserveGame {
 
     startNewGame() {
         this.state = JSON.parse(JSON.stringify(INITIAL_GAME_STATE));
-        const creativeCheckbox = document.getElementById('creative-mode-checkbox');
-        if (creativeCheckbox) {
-            this.state.isCreativeMode = creativeCheckbox.checked;
-        }
         this.campChest = new CampChest('camp_chest_init', this.hq.x + this.hq.width + 30, this.hq.y + 72);
         this.inventory = this.campChest.inventory;
         this.inventory.addItem('wood', 30, 'Wood');
@@ -5121,12 +5126,18 @@ class ReserveGame {
         const mainMenu = document.getElementById('main-menu-overlay');
         if (mainMenu) mainMenu.classList.add('hidden');
 
-        const storyModal = document.getElementById('intro-story-modal');
-        if (storyModal) storyModal.classList.remove('hidden');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        if (loadingOverlay) loadingOverlay.classList.remove('hidden');
 
         this.isPaused = true;
         this.player.isMovementLocked = true;
         if (this.audioManager) this.audioManager.startAudio();
+
+        setTimeout(() => {
+            if (loadingOverlay) loadingOverlay.classList.add('hidden');
+            const storyModal = document.getElementById('intro-story-modal');
+            if (storyModal) storyModal.classList.remove('hidden');
+        }, 1200);
 
         this.updateUI();
     }
@@ -5405,19 +5416,16 @@ class ReserveGame {
         const pStoneCount = this.inventory.getItemCount('processedStone');
         const saplingCount = this.inventory.getItemCount('sapling');
 
-        if (this.state.isCreativeMode || (
-            woodCount >= bDef.woodCost &&
+        if (woodCount >= bDef.woodCost &&
             stoneCount >= bDef.stoneCost &&
             pStoneCount >= (bDef.processedStoneCost || 0) &&
-            saplingCount >= (bDef.saplingCost || 0))) {
+            saplingCount >= (bDef.saplingCost || 0)) {
 
-            if (!this.state.isCreativeMode) {
-                this.inventory.consumeItem('wood', bDef.woodCost);
-                this.inventory.consumeItem('stone', bDef.stoneCost);
-                this.inventory.consumeItem('processedStone', bDef.processedStoneCost || 0);
-                if (bDef.saplingCost) {
-                    this.inventory.consumeItem('sapling', bDef.saplingCost);
-                }
+            this.inventory.consumeItem('wood', bDef.woodCost);
+            this.inventory.consumeItem('stone', bDef.stoneCost);
+            this.inventory.consumeItem('processedStone', bDef.processedStoneCost || 0);
+            if (bDef.saplingCost) {
+                this.inventory.consumeItem('sapling', bDef.saplingCost);
             }
 
             const buildingObj = {
@@ -5455,6 +5463,38 @@ class ReserveGame {
     // Infrastructure & Housing Warning Checks
     syncRangersWithInfrastructure() {
         const rangerHuts = this.state.placedBuildings.filter(b => b.type === 'ranger_hut');
+        rangerHuts.forEach(hut => {
+            if (!hut.assignedRangerIds) hut.assignedRangerIds = [];
+        });
+
+        // 1. Sync from hired.assignedBuilding to hut.assignedRangerIds
+        this.state.hiredRangers.forEach(hired => {
+            if (hired.assignedBuilding && hired.assignedBuilding !== 'reserve_hq') {
+                const hut = rangerHuts.find(b => b.id === hired.assignedBuilding);
+                if (hut && !hut.assignedRangerIds.includes(hired.id)) {
+                    if (hut.assignedRangerIds.length < 2) {
+                        hut.assignedRangerIds.push(hired.id);
+                    } else {
+                        hired.assignedBuilding = null;
+                    }
+                }
+            }
+        });
+
+        // 2. Sync from hut.assignedRangerIds to hired.assignedBuilding & prune removed
+        rangerHuts.forEach(hut => {
+            hut.assignedRangerIds = hut.assignedRangerIds.filter(id => {
+                const hired = this.state.hiredRangers.find(r => r.id === id);
+                if (hired) {
+                    if (hired.assignedBuilding !== hut.id) {
+                        hired.assignedBuilding = hut.id;
+                    }
+                    return true;
+                }
+                return false;
+            });
+        });
+
         const unhousedWorkers = this.state.hiredRangers.filter(r => !r.assignedBuilding);
 
         // Housing Warning Badge Logic
@@ -5475,7 +5515,7 @@ class ReserveGame {
         this.state.hiredRangers.forEach(hired => {
             let spawnX = this.hq.x + 72;
             let spawnY = this.hq.y + 72;
-            if (hired.assignedBuilding && hired.assignedBuilding.startsWith('hut_')) {
+            if (hired.assignedBuilding && hired.assignedBuilding !== 'reserve_hq') {
                 const hut = rangerHuts.find(b => b.id === hired.assignedBuilding);
                 if (hut) {
                     spawnX = hut.x;
@@ -6006,6 +6046,79 @@ class ReserveGame {
         if (!grid) return;
         grid.innerHTML = '';
 
+        // Section 1: Hired Workers Header with prominent + button to open Marketplace / Recruit
+        const headerCard = document.createElement('div');
+        headerCard.className = 'item-card';
+        headerCard.style.cssText = 'background: rgba(107, 62, 16, 0.25); border: 2px solid var(--accent-gold); display: flex; align-items: center; justify-content: space-between; padding: 12px; margin-bottom: 10px;';
+        headerCard.innerHTML = `
+            <div>
+                <h4 style="color: var(--accent-gold); font-size: 1.05rem;">🤠 Active Reserve Workers (${this.state.hiredRangers.length})</h4>
+                <p style="font-size: 0.8rem; color: var(--text-muted);">Manage housing, jobs, and buffs for your hired rangers.</p>
+            </div>
+            <button id="open-recruit-marketplace-btn" class="action-btn positive-btn" style="width: auto; padding: 8px 16px; font-size: 0.9rem;">
+                ➕ Hire Workers
+            </button>
+        `;
+        headerCard.querySelector('#open-recruit-marketplace-btn').addEventListener('click', () => {
+            this.openManagementModal('animals');
+        });
+        grid.appendChild(headerCard);
+
+        // Section 2: Active Hired Workers List
+        if (this.state.hiredRangers.length === 0) {
+            const emptyEl = document.createElement('div');
+            emptyEl.style.cssText = 'text-align: center; color: var(--text-muted); padding: 20px; font-style: italic;';
+            emptyEl.textContent = 'No workers hired yet. Click "+ Hire Workers" to hire rangers from the marketplace!';
+            grid.appendChild(emptyEl);
+        } else {
+            this.state.hiredRangers.forEach(hired => {
+                const rangerEntity = this.rangers.find(r => r.id === hired.id);
+                const card = document.createElement('div');
+                card.className = 'item-card';
+
+                const iconHTML = hired.image
+                    ? `<img src="${hired.image}" alt="${hired.name}" class="card-thumb-img">`
+                    : '🤠';
+
+                const housingName = hired.assignedBuilding === 'reserve_hq'
+                    ? 'Reserve HQ'
+                    : (this.state.placedBuildings.find(b => b.id === hired.assignedBuilding)?.name || 'Unhoused');
+
+                card.innerHTML = `
+                    <div class="card-header">
+                        <div class="card-icon">${iconHTML}</div>
+                        <div class="card-title-group">
+                            <h4>${hired.name} (${hired.gender}, ${hired.age}y)</h4>
+                            <span class="card-sub">Housing: <strong>${housingName}</strong> | Job: <strong>${hired.job || 'None'}</strong></span>
+                        </div>
+                    </div>
+                    <button class="action-btn">
+                        ⚙️ Manage Worker
+                    </button>
+                `;
+
+                const btn = card.querySelector('.action-btn');
+                if (btn) {
+                    btn.addEventListener('click', () => {
+                        if (rangerEntity) {
+                            this.openWorkerManagementModal(rangerEntity);
+                        } else {
+                            // Dummy entity wrapper if entity not spawned yet
+                            this.openWorkerManagementModal({ id: hired.id, state: 'Idle' });
+                        }
+                    });
+                }
+
+                grid.appendChild(card);
+            });
+        }
+
+        // Section 3: Available Candidates Marketplace Listing
+        const marketplaceHeader = document.createElement('h4');
+        marketplaceHeader.style.cssText = 'color: var(--accent-gold); margin-top: 15px; margin-bottom: 5px; font-size: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;';
+        marketplaceHeader.textContent = '🤝 Available Worker Candidates for Hire';
+        grid.appendChild(marketplaceHeader);
+
         this.rangerListings.forEach(ranger => {
             const card = document.createElement('div');
             card.className = 'item-card';
@@ -6027,8 +6140,8 @@ class ReserveGame {
                     </div>
                 </div>
                 <div>${traitsHTML}</div>
-                <button class="action-btn">
-                    Hire ($${ranger.dailyWage}/d)
+                <button class="action-btn positive-btn">
+                    ➕ Hire Candidate ($${ranger.dailyWage}/d)
                 </button>
             `;
 
@@ -6066,12 +6179,11 @@ class ReserveGame {
             const saplingCount = this.inventory.getItemCount('sapling');
             const scrapsCount = this.inventory.getItemCount('scraps');
 
-            const canAfford = this.state.isCreativeMode || (
-                              woodCount >= (itemDef.woodCost || 0) &&
+            const canAfford = woodCount >= (itemDef.woodCost || 0) &&
                               stoneCount >= (itemDef.stoneCost || 0) &&
                               pStoneCount >= (itemDef.processedStoneCost || 0) &&
                               saplingCount >= (itemDef.saplingCost || 0) &&
-                              scrapsCount >= (itemDef.scrapsCost || 0));
+                              scrapsCount >= (itemDef.scrapsCost || 0);
 
             const card = document.createElement('div');
             card.className = 'item-card';
@@ -6106,13 +6218,11 @@ class ReserveGame {
                 btn.addEventListener('click', () => {
                     if (itemDef.type === 'item') {
                         if (this.inventory.canAddItem(itemDef.id, 1)) {
-                            if (!this.state.isCreativeMode) {
-                                this.inventory.consumeItem('wood', itemDef.woodCost || 0);
-                                this.inventory.consumeItem('stone', itemDef.stoneCost || 0);
-                                this.inventory.consumeItem('processedStone', itemDef.processedStoneCost || 0);
-                                if (itemDef.saplingCost) this.inventory.consumeItem('sapling', itemDef.saplingCost);
-                                if (itemDef.scrapsCost) this.inventory.consumeItem('scraps', itemDef.scrapsCost);
-                            }
+                            this.inventory.consumeItem('wood', itemDef.woodCost || 0);
+                            this.inventory.consumeItem('stone', itemDef.stoneCost || 0);
+                            this.inventory.consumeItem('processedStone', itemDef.processedStoneCost || 0);
+                            if (itemDef.saplingCost) this.inventory.consumeItem('sapling', itemDef.saplingCost);
+                            if (itemDef.scrapsCost) this.inventory.consumeItem('scraps', itemDef.scrapsCost);
                             this.inventory.addItem(itemDef.id, 1);
                             this.showNotification(`Crafted 1x ${itemDef.name}!`);
                             this.updateUI();
@@ -6142,11 +6252,10 @@ class ReserveGame {
         campCard.className = 'item-card';
 
         if (nextCamp) {
-            const canAfford = this.state.isCreativeMode || (
-                              this.state.funds >= nextCamp.cost &&
+            const canAfford = this.state.funds >= nextCamp.cost &&
                               this.inventory.getItemCount('wood') >= nextCamp.woodCost &&
                               this.inventory.getItemCount('stone') >= (nextCamp.stoneCost || 0) &&
-                              this.inventory.getItemCount('processedStone') >= (nextCamp.processedStoneCost || 0));
+                              this.inventory.getItemCount('processedStone') >= (nextCamp.processedStoneCost || 0);
 
             campCard.innerHTML = `
                 <div class="card-header">
@@ -6169,14 +6278,12 @@ class ReserveGame {
             const btn = campCard.querySelector('.action-btn');
             if (btn && canAfford) {
                 btn.addEventListener('click', () => {
-                    if (!this.state.isCreativeMode) {
-                        this.state.funds -= nextCamp.cost;
-                        this.weeklyStats.upgradesSpent += nextCamp.cost;
-                        this.weeklyStats.expenses += nextCamp.cost;
-                        this.inventory.consumeItem('wood', nextCamp.woodCost);
-                        this.inventory.consumeItem('stone', nextCamp.stoneCost || 0);
-                        this.inventory.consumeItem('processedStone', nextCamp.processedStoneCost || 0);
-                    }
+                    this.state.funds -= nextCamp.cost;
+                    this.weeklyStats.upgradesSpent += nextCamp.cost;
+                    this.weeklyStats.expenses += nextCamp.cost;
+                    this.inventory.consumeItem('wood', nextCamp.woodCost);
+                    this.inventory.consumeItem('stone', nextCamp.stoneCost || 0);
+                    this.inventory.consumeItem('processedStone', nextCamp.processedStoneCost || 0);
                     this.state.campTier += 1;
                     this.updateUI();
                 });
@@ -6202,11 +6309,10 @@ class ReserveGame {
         fenceCard.className = 'item-card';
 
         if (nextFence) {
-            const canAfford = this.state.isCreativeMode || (
-                              this.state.funds >= nextFence.cost &&
+            const canAfford = this.state.funds >= nextFence.cost &&
                               this.inventory.getItemCount('wood') >= nextFence.woodCost &&
                               this.inventory.getItemCount('stone') >= (nextFence.stoneCost || 0) &&
-                              this.inventory.getItemCount('processedStone') >= (nextFence.processedStoneCost || 0));
+                              this.inventory.getItemCount('processedStone') >= (nextFence.processedStoneCost || 0);
 
             fenceCard.innerHTML = `
                 <div class="card-header">
@@ -6229,14 +6335,12 @@ class ReserveGame {
             const btn = fenceCard.querySelector('.action-btn');
             if (btn && canAfford) {
                 btn.addEventListener('click', () => {
-                    if (!this.state.isCreativeMode) {
-                        this.state.funds -= nextFence.cost;
-                        this.weeklyStats.upgradesSpent += nextFence.cost;
-                        this.weeklyStats.expenses += nextFence.cost;
-                        this.inventory.consumeItem('wood', nextFence.woodCost);
-                        this.inventory.consumeItem('stone', nextFence.stoneCost || 0);
-                        this.inventory.consumeItem('processedStone', nextFence.processedStoneCost || 0);
-                    }
+                    this.state.funds -= nextFence.cost;
+                    this.weeklyStats.upgradesSpent += nextFence.cost;
+                    this.weeklyStats.expenses += nextFence.cost;
+                    this.inventory.consumeItem('wood', nextFence.woodCost);
+                    this.inventory.consumeItem('stone', nextFence.stoneCost || 0);
+                    this.inventory.consumeItem('processedStone', nextFence.processedStoneCost || 0);
                     this.state.fenceTier += 1;
                     this.updateUI();
                 });
@@ -6266,9 +6370,9 @@ class ReserveGame {
         ctx.clearRect(0, 0, w, h);
 
         ctx.save();
-        // Clip to circular map
+        // Clip to rounded rectangular map
         ctx.beginPath();
-        ctx.arc(w / 2, h / 2, w / 2, 0, Math.PI * 2);
+        ctx.roundRect(0, 0, w, h, 12);
         ctx.clip();
 
         const centerX = w / 2;

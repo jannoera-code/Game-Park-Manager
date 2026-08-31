@@ -511,7 +511,6 @@ const INITIAL_GAME_STATE = {
     campTier: 1,
     fenceTier: 1,
     placedBuildings: [],
-    isCreativeMode: false,
     tutorialIndex: 0,
     tutorialEvents: {}
 };
