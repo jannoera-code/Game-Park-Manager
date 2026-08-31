@@ -4,9 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>African Wildlife Reserve Manager - RPG & Living AI</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -165,7 +162,6 @@
                     <select id="worker-job-select" style="width: 100%; padding: 8px; border-radius: 6px; background: #1a252c; color: var(--text-main); border: 1px solid var(--border-color);">
                         <option value="">-- No Job --</option>
                         <option value="Forager">Forager (Loots Crates & Diseased Corpses)</option>
-                        <option value="Cook">Cook (Cooks Raw Meat at Braai)</option>
                         <option value="Gatherer">Gatherer (Harvests Trees & Rocks)</option>
                     </select>
                 </div>
@@ -339,6 +335,7 @@
             <div class="hud-brand">
                 <h1 id="hud-park-name">🌍 Serengeti Reserve</h1>
                 <div class="day-badge"><span id="digital-clock">06:00 ☀️</span> | Day <span id="stat-day">1</span> of Week <span id="stat-week">1</span></div>
+                <div class="dosh-badge" id="dosh-badge-container" style="background: rgba(107, 62, 16, 0.2); color: #2ecc71; padding: 3px 8px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; border: 1px solid var(--accent-gold); display: flex; align-items: center; gap: 4px; transition: transform 0.3s ease, background-color 0.3s ease;">💰 Dosh: <span id="stat-dosh">0</span></div>
                 <!-- Ranger Housing Warning Badge -->
                 <div id="housing-warning-badge" class="warning-badge hidden" title="Staff Unhoused! Build Ranger Huts so hired rangers can spawn.">
                     ⚠️ <span id="housing-warning-text">Rangers Unhoused</span>

@@ -562,46 +562,47 @@ class Inventory {
 
 /**
  * Shrub Entity Class
- * Small decorative shrubs with wind sway animation for savannah environment
+ * Smaller, skinny grass patches with sine-wave wind sway animation
  */
 class Shrub {
     constructor(id, x, y) {
         this.id = id;
         this.x = x;
         this.y = y;
-        this.radius = 12;
+        this.radius = 10;
         this.phaseOffset = Math.random() * Math.PI * 2;
+        this.bladeHeights = [10, 15, 13, 17, 11];
+        this.bladeOffsets = [-7, -3, 0, 4, 7];
     }
 
     render(ctx) {
         ctx.save();
         ctx.translate(this.x, this.y);
 
-        // Wind sway effect
-        const time = performance.now() / 600;
-        const sway = Math.sin(time + this.phaseOffset) * 0.15;
-        ctx.rotate(sway);
+        // Sine-wave sway animation for natural wind motion
+        const time = performance.now() / 500;
 
-        // Shadow
+        // Subtle ground shadow
         ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
         ctx.beginPath();
-        ctx.ellipse(0, 8, 12, 4, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, 2, 9, 3, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        // Shrub Foliage Patches
-        ctx.fillStyle = '#2d5a27';
-        ctx.beginPath();
-        ctx.arc(-5, -2, 9, 0, Math.PI * 2);
-        ctx.arc(5, -2, 10, 0, Math.PI * 2);
-        ctx.arc(0, -9, 10, 0, Math.PI * 2);
-        ctx.fill();
+        // Render skinny grass blades
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
 
-        ctx.fillStyle = '#3c7a34';
-        ctx.beginPath();
-        ctx.arc(-3, -4, 6, 0, Math.PI * 2);
-        ctx.arc(3, -4, 7, 0, Math.PI * 2);
-        ctx.arc(0, -9, 7, 0, Math.PI * 2);
-        ctx.fill();
+        for (let i = 0; i < this.bladeHeights.length; i++) {
+            const bx = this.bladeOffsets[i];
+            const h = this.bladeHeights[i];
+            const bladeSway = Math.sin(time + this.phaseOffset + i * 0.3) * (h * 0.25);
+
+            ctx.beginPath();
+            ctx.moveTo(bx, 0);
+            ctx.quadraticCurveTo(bx + bladeSway * 0.5, -h * 0.5, bx + bladeSway, -h);
+            ctx.strokeStyle = i % 2 === 0 ? '#68a129' : '#8ac736';
+            ctx.stroke();
+        }
 
         ctx.restore();
     }
@@ -2009,7 +2010,7 @@ class Ranger {
         this.image = data.image || 'ranger1.png';
 
         this.assignedBuilding = data.assignedBuilding || null;
-        this.job = data.job || null; // 'Gatherer', 'Forager', 'Cook'
+        this.job = data.job || null; // 'Gatherer', 'Forager'
         this.buff = data.buff || null;
         this.carryInventory = new Inventory(5, 50);
 
@@ -2207,8 +2208,6 @@ class Ranger {
             this.runGathererRoutine(dt, gameInstance);
         } else if (this.job === 'Forager') {
             this.runForagerRoutine(dt, gameInstance);
-        } else if (this.job === 'Cook') {
-            this.runCookRoutine(dt, gameInstance);
         }
     }
 
@@ -2283,6 +2282,16 @@ class Ranger {
 
     runForagerRoutine(dt, gameInstance) {
         const campChest = gameInstance.campChest;
+
+        // Scout reveal: as Forager moves, permanently reveal map chunks in a radius around them
+        const currentChunkX = Math.floor(this.x / 1000);
+        const currentChunkY = Math.floor(this.y / 1000);
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                gameInstance.revealedChunks.add(`${currentChunkX + dx},${currentChunkY + dy}`);
+            }
+        }
+
         const carryTotal = this.carryInventory.slots.reduce((sum, s) => sum + s.count, 0);
 
         if (carryTotal >= 15 || (this.targetForage === null && carryTotal > 0)) {
@@ -2350,146 +2359,6 @@ class Ranger {
         }
     }
 
-    runCookRoutine(dt, gameInstance) {
-        const campChest = gameInstance.campChest;
-        const braais = gameInstance.braais || [];
-        const targetBraai = braais.length > 0 ? braais[0] : null;
-
-        if (!targetBraai) {
-            // Idle near HQ if no Braai built yet
-            this.moveTowards(campChest.x + 40, campChest.y, dt);
-            return;
-        }
-
-        // Check if Braai needs wood fuel
-        if (targetBraai.braaiWood <= 2) {
-            // Check Camp Chest for braai_wood or wood
-            const braaiWoodInChest = campChest.inventory.getItemCount('braai_wood');
-            const woodInChest = campChest.inventory.getItemCount('wood');
-
-            if (braaiWoodInChest > 0) {
-                // Fetch braai_wood from Camp Chest
-                const distChest = Math.hypot(campChest.x - this.x, campChest.y - this.y);
-                if (distChest < campChest.radius + 20) {
-                    const taken = Math.min(5, braaiWoodInChest);
-                    campChest.inventory.consumeItem('braai_wood', taken);
-                    this.carryInventory.addItem('braai_wood', taken, 'Braai Wood');
-                } else {
-                    this.moveTowards(campChest.x, campChest.y, dt);
-                    return;
-                }
-            } else if (woodInChest > 0) {
-                // Look for or auto-build Wood Chopping Station
-                let choppingStation = gameInstance.state.placedBuildings.find(b => b.type === 'wood_chopping_station');
-                if (!choppingStation) {
-                    // Auto-build Wood Chopping Station near HQ
-                    const stationX = gameInstance.hq.x - 60;
-                    const stationY = gameInstance.hq.y + 60;
-                    choppingStation = {
-                        id: `building_station_${Date.now()}`,
-                        type: 'wood_chopping_station',
-                        x: stationX,
-                        y: stationY,
-                        width: 70,
-                        height: 70,
-                        rotation: 0
-                    };
-                    gameInstance.state.placedBuildings.push(choppingStation);
-                    gameInstance.addFloatingText('🪓 Auto-built Wood Chopping Station!', stationX, stationY - 20, '#f1c40f');
-                }
-
-                // Carry wood to Chopping Station to craft Braai Wood
-                if (this.carryInventory.getItemCount('wood') === 0 && this.carryInventory.getItemCount('braai_wood') === 0) {
-                    const distChest = Math.hypot(campChest.x - this.x, campChest.y - this.y);
-                    if (distChest < campChest.radius + 20) {
-                        const taken = Math.min(5, woodInChest);
-                        campChest.inventory.consumeItem('wood', taken);
-                        this.carryInventory.addItem('wood', taken, 'Wood');
-                    } else {
-                        this.moveTowards(campChest.x, campChest.y, dt);
-                        return;
-                    }
-                }
-
-                if (this.carryInventory.getItemCount('wood') > 0) {
-                    const distStation = Math.hypot(choppingStation.x - this.x, choppingStation.y - this.y);
-                    if (distStation < 40) {
-                        this.taskTimer += dt * this.workSpeedMult;
-                        if (this.taskTimer >= 1.0) {
-                            this.taskTimer = 0;
-                            const count = this.carryInventory.getItemCount('wood');
-                            this.carryInventory.consumeItem('wood', count);
-                            this.carryInventory.addItem('braai_wood', count, 'Braai Wood');
-                            gameInstance.addFloatingText('🪓 Crafted Braai Wood!', choppingStation.x, choppingStation.y - 20, '#f1c40f');
-                        }
-                    } else {
-                        this.moveTowards(choppingStation.x, choppingStation.y, dt);
-                    }
-                    return;
-                }
-            }
-        }
-
-        // Deliver carried Braai Wood fuel to Braai if holding any
-        const carriedFuel = this.carryInventory.getItemCount('braai_wood');
-        if (carriedFuel > 0) {
-            const distBraai = Math.hypot(targetBraai.x - this.x, targetBraai.y - this.y);
-            if (distBraai < 45) {
-                targetBraai.addFuel(carriedFuel);
-                this.carryInventory.consumeItem('braai_wood', carriedFuel);
-                gameInstance.addFloatingText('🔥 Added Braai Fuel!', targetBraai.x, targetBraai.y - 20, '#e67e22');
-            } else {
-                this.moveTowards(targetBraai.x, targetBraai.y, dt);
-            }
-            return;
-        }
-
-        // Fetch Raw Meat from Camp Chest if Braai needs raw meat
-        const rawMeatInChest = campChest.inventory.getItemCount('raw_meat');
-        const carriedMeat = this.carryInventory.getItemCount('raw_meat');
-
-        if (carriedMeat === 0 && rawMeatInChest > 0 && targetBraai.rawMeat < 5) {
-            const distChest = Math.hypot(campChest.x - this.x, campChest.y - this.y);
-            if (distChest < campChest.radius + 20) {
-                const taken = Math.min(5, rawMeatInChest);
-                campChest.inventory.consumeItem('raw_meat', taken);
-                this.carryInventory.addItem('raw_meat', taken, 'Raw Meat');
-            } else {
-                this.moveTowards(campChest.x, campChest.y, dt);
-            }
-            return;
-        }
-
-        // Deliver carried Raw Meat to Braai
-        if (carriedMeat > 0) {
-            const distBraai = Math.hypot(targetBraai.x - this.x, targetBraai.y - this.y);
-            if (distBraai < 45) {
-                targetBraai.addMeat(carriedMeat);
-                this.carryInventory.consumeItem('raw_meat', carriedMeat);
-                gameInstance.addFloatingText('🥩 Loaded Meat into Braai!', targetBraai.x, targetBraai.y - 20, '#e74c3c');
-            } else {
-                this.moveTowards(targetBraai.x, targetBraai.y, dt);
-            }
-            return;
-        }
-
-        // Collect Cooked Meat from Braai and deposit into Camp Chest
-        if (targetBraai.cookedMeat > 0) {
-            const distBraai = Math.hypot(targetBraai.x - this.x, targetBraai.y - this.y);
-            if (distBraai < 45) {
-                const collected = targetBraai.collectOutput();
-                campChest.inventory.addItem('cooked_meat', collected, 'Cooked Meat');
-                gameInstance.addFloatingText(`🍖 Collected +${collected} Cooked Meat to Chest!`, targetBraai.x, targetBraai.y - 20, '#2ecc71');
-                gameInstance.recordTutorialEvent('cookedFood');
-            } else {
-                this.moveTowards(targetBraai.x, targetBraai.y, dt);
-            }
-            return;
-        }
-
-        // Default: Stand near Braai
-        this.moveTowards(targetBraai.x + 30, targetBraai.y + 30, dt);
-    }
 
     moveTowards(tx, ty, dt) {
         const dx = tx - this.x;
@@ -2548,10 +2417,6 @@ class Ranger {
             ctx.fillStyle = '#e67e22';
             ctx.font = 'bold 12px sans-serif';
             ctx.fillText('🎒', 0, -22);
-        } else if (this.job === 'Cook') {
-            ctx.fillStyle = '#e74c3c';
-            ctx.font = 'bold 12px sans-serif';
-            ctx.fillText('🥩', 0, -22);
         } else if (this.state === 'refilling_water') {
             ctx.fillStyle = '#f39c12';
             ctx.font = 'bold 12px sans-serif';
@@ -3664,6 +3529,13 @@ class ReserveGame {
     handleLeftClickSelection() {
         const mx = this.mouse.worldX;
         const my = this.mouse.worldY;
+
+        // Check if clicked Reserve HQ
+        if (mx >= this.hq.x && mx <= this.hq.x + this.hq.width &&
+            my >= this.hq.y && my <= this.hq.y + this.hq.height) {
+            this.openHqModal();
+            return;
+        }
 
         // Check if clicked Camp Chest
         if (this.campChest) {
@@ -5416,6 +5288,7 @@ class ReserveGame {
             const reward = activeChecklist.reward;
             this.state.dosh = (this.state.dosh || 0) + reward;
             this.showNotification(`Completed ${activeChecklist.title}! Awarded +${reward} Dosh!`);
+            this.highlightDoshCounter();
 
             this.state.tutorialIndex = currentIndex + 1;
 
@@ -6026,7 +5899,7 @@ class ReserveGame {
         if (elFunds) elFunds.textContent = `$${this.state.funds.toLocaleString()}`;
 
         const elDosh = document.getElementById('stat-dosh');
-        if (elDosh) elDosh.textContent = `${(this.state.dosh || 0).toLocaleString()} Dosh`;
+        if (elDosh) elDosh.textContent = (this.state.dosh || 0).toLocaleString();
 
         const elClock = document.getElementById('digital-clock');
         if (elClock) elClock.textContent = this.getFormattedTime();
@@ -6540,8 +6413,8 @@ class ReserveGame {
     }
 
     renderSavannahBackground(viewBounds) {
-        // Base ground fill for visible viewport
-        this.ctx.fillStyle = '#6b5934'; // Natural savanna dry grass base
+        // Base ground fill for visible viewport (Smoothly blended Savannah green)
+        this.ctx.fillStyle = '#557a2b';
         this.ctx.fillRect(
             viewBounds.minX - 100,
             viewBounds.minY - 100,
@@ -6550,7 +6423,7 @@ class ReserveGame {
         );
 
         // Reserve interior natural lush grass fill
-        this.ctx.fillStyle = '#4a6830';
+        this.ctx.fillStyle = '#466826';
         this.ctx.fillRect(this.reserve.x, this.reserve.y, this.reserve.width, this.reserve.height);
 
         // Organic smoothly blended grass patches across reserve terrain
@@ -6949,38 +6822,91 @@ class ReserveGame {
         this.ctx.restore();
     }
 
+    highlightDoshCounter() {
+        const badge = document.getElementById('dosh-badge-container');
+        if (badge) {
+            badge.style.transform = 'scale(1.35)';
+            badge.style.backgroundColor = 'rgba(46, 204, 113, 0.8)';
+            setTimeout(() => {
+                badge.style.transform = 'scale(1)';
+                badge.style.backgroundColor = 'rgba(107, 62, 16, 0.2)';
+            }, 800);
+        }
+    }
+
     /**
      * Fog of War System
-     * Outside the reserve, unrevealed chunks are rendered pitch black.
-     * Player permanently reveals chunks as they travel.
+     * Render a semi-transparent dark overlay (fillStyle = "rgba(0, 0, 0, 0.7)") over unrevealed map.
+     * Clears fog overlay in radius around Forager rangers using globalCompositeOperation = 'destination-out'.
      */
     renderFogOfWar(camX, camY, screenW, screenH) {
-        const startChunkX = Math.floor((camX - 100) / 1000);
-        const endChunkX = Math.floor((camX + screenW + 100) / 1000);
-        const startChunkY = Math.floor((camY - 100) / 1000);
-        const endChunkY = Math.floor((camY + screenH + 100) / 1000);
+        const scale = this.camera ? this.camera.scale : 0.65;
 
-        this.ctx.fillStyle = 'rgba(5, 8, 10, 0.95)';
+        if (!this.fogCanvas) {
+            this.fogCanvas = document.createElement('canvas');
+            this.fogCtx = this.fogCanvas.getContext('2d');
+        }
+        if (this.fogCanvas.width !== screenW || this.fogCanvas.height !== screenH) {
+            this.fogCanvas.width = screenW;
+            this.fogCanvas.height = screenH;
+        }
+
+        const fCtx = this.fogCtx;
+        fCtx.clearRect(0, 0, screenW, screenH);
+
+        // Render semi-transparent dark overlay over entire unrevealed screen
+        fCtx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        fCtx.fillRect(0, 0, screenW, screenH);
+
+        fCtx.globalCompositeOperation = 'destination-out';
+
+        const worldToScreen = (wx, wy) => {
+            return {
+                x: (wx - camX) * scale + screenW / 2,
+                y: (wy - camY) * scale + screenH / 2
+            };
+        };
+
+        // Clear fog over Reserve HQ enclosure area
+        const reserveTL = worldToScreen(this.reserve.x, this.reserve.y);
+        const reserveBR = worldToScreen(this.reserve.x + this.reserve.width, this.reserve.y + this.reserve.height);
+        fCtx.fillRect(reserveTL.x, reserveTL.y, reserveBR.x - reserveTL.x, reserveBR.y - reserveTL.y);
+
+        // Clear fog over permanently revealed chunks
+        const startChunkX = Math.floor((camX - (screenW / 2) / scale - 1000) / 1000);
+        const endChunkX = Math.floor((camX + (screenW / 2) / scale + 1000) / 1000);
+        const startChunkY = Math.floor((camY - (screenH / 2) / scale - 1000) / 1000);
+        const endChunkY = Math.floor((camY + (screenH / 2) / scale + 1000) / 1000);
 
         for (let cx = startChunkX; cx <= endChunkX; cx++) {
             for (let cy = startChunkY; cy <= endChunkY; cy++) {
                 const key = `${cx},${cy}`;
-                const worldX = cx * 1000;
-                const worldY = cy * 1000;
-
-                // Check if chunk is inside reserve or revealed
-                const intersectsReserve = (
-                    worldX + 1000 >= this.reserve.x &&
-                    worldX <= this.reserve.x + this.reserve.width &&
-                    worldY + 1000 >= this.reserve.y &&
-                    worldY <= this.reserve.y + this.reserve.height
-                );
-
-                if (!intersectsReserve && !this.revealedChunks.has(key)) {
-                    this.ctx.fillRect(worldX, worldY, 1000, 1000);
+                if (this.revealedChunks.has(key)) {
+                    const chunkTL = worldToScreen(cx * 1000, cy * 1000);
+                    const chunkBR = worldToScreen((cx + 1) * 1000, (cy + 1) * 1000);
+                    fCtx.fillRect(chunkTL.x, chunkTL.y, chunkBR.x - chunkTL.x, chunkBR.y - chunkTL.y);
                 }
             }
         }
+
+        // Clear fog in a radius around Rangers with Forager job as they move
+        this.rangers.forEach(ranger => {
+            if (ranger.job === 'Forager') {
+                const pos = worldToScreen(ranger.x, ranger.y);
+                const radius = 220 * scale;
+                fCtx.beginPath();
+                fCtx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+                fCtx.fill();
+            }
+        });
+
+        fCtx.globalCompositeOperation = 'source-over';
+
+        // Draw fog overlay onto main canvas in screen coordinates
+        this.ctx.save();
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        this.ctx.drawImage(this.fogCanvas, 0, 0);
+        this.ctx.restore();
     }
 }
 
