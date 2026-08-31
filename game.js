@@ -561,6 +561,53 @@ class Inventory {
 }
 
 /**
+ * Shrub Entity Class
+ * Small decorative shrubs with wind sway animation for savannah environment
+ */
+class Shrub {
+    constructor(id, x, y) {
+        this.id = id;
+        this.x = x;
+        this.y = y;
+        this.radius = 12;
+        this.phaseOffset = Math.random() * Math.PI * 2;
+    }
+
+    render(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+
+        // Wind sway effect
+        const time = performance.now() / 600;
+        const sway = Math.sin(time + this.phaseOffset) * 0.15;
+        ctx.rotate(sway);
+
+        // Shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+        ctx.beginPath();
+        ctx.ellipse(0, 8, 12, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Shrub Foliage Patches
+        ctx.fillStyle = '#2d5a27';
+        ctx.beginPath();
+        ctx.arc(-5, -2, 9, 0, Math.PI * 2);
+        ctx.arc(5, -2, 10, 0, Math.PI * 2);
+        ctx.arc(0, -9, 10, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#3c7a34';
+        ctx.beginPath();
+        ctx.arc(-3, -4, 6, 0, Math.PI * 2);
+        ctx.arc(3, -4, 7, 0, Math.PI * 2);
+        ctx.arc(0, -9, 7, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+    }
+}
+
+/**
  * PlantedSapling Class
  * Ecological growth state machine: Sprout -> Young Tree -> Mature Tree
  */
@@ -2057,8 +2104,9 @@ class Ranger {
         this.baseSpeed = 45 * speedMult * (1 - speedPenalty);
         this.workSpeedMult = workMult * (1 - speedPenalty);
 
-        // Check Thirst Threshold (< 30%)
-        if (this.thirst < 30 && this.state !== 'seeking_water' && this.state !== 'drinking') {
+        // Task Interruption Threshold: Must finish current action cycle before checking water. Force job interruption ONLY if Thirst strictly drops below 50%.
+        const isBusyInCycle = (this.taskTimer > 0);
+        if (!isBusyInCycle && this.thirst < 50 && this.state !== 'seeking_water' && this.state !== 'drinking') {
             this.savedStateBeforeThirst = this.state;
             this.state = 'seeking_water';
         }
@@ -2717,10 +2765,38 @@ class ReserveGame {
             upgradesSpent: 0
         };
 
-        // Reserve Fixed Coordinate Zone (Exact Central HQ Placement)
+        // Reserve Fixed Coordinate Zone
         this.reserve = { x: 500, y: 500, width: 1000, height: 1000 };
-        this.hq = { x: this.reserve.x + (this.reserve.width - 144) / 2, y: this.reserve.y + (this.reserve.height - 144) / 2, width: 144, height: 144 };
-        this.campChest = new CampChest('camp_chest_init', this.hq.x + this.hq.width + 30, this.hq.y + 72);
+
+        // Structure Scaling: Reserve HQ scaled significantly (288x288, roughly 4x watering hole / 2x Ranger Hut footprint)
+        const hqWidth = 288;
+        const hqHeight = 288;
+
+        // Waterhole Placement
+        this.waterhole = new Waterhole(this.reserve.x + 650, this.reserve.y + 650);
+
+        // Spawn Prevention: Strict coordinate collision check during world generation
+        let proposedHqX = this.reserve.x + 80;
+        let proposedHqY = this.reserve.y + 80;
+
+        const checkOverlap = (hx, hy, hw, hh, wh) => {
+            const hqBox = { minX: hx - 20, maxX: hx + hw + 20, minY: hy - 20, maxY: hy + hh + 20 };
+            const whBox = {
+                minX: wh.x - wh.radiusX - 20,
+                maxX: wh.x + wh.radiusX + 20,
+                minY: wh.y - wh.radiusY - 20,
+                maxY: wh.y + wh.radiusY + 20
+            };
+            return !(hqBox.maxX < whBox.minX || hqBox.minX > whBox.maxX || hqBox.maxY < whBox.minY || hqBox.minY > whBox.maxY);
+        };
+
+        if (checkOverlap(proposedHqX, proposedHqY, hqWidth, hqHeight, this.waterhole)) {
+            proposedHqX = this.reserve.x + 80;
+            proposedHqY = this.reserve.y + this.reserve.height - hqHeight - 80;
+        }
+
+        this.hq = { x: proposedHqX, y: proposedHqY, width: hqWidth, height: hqHeight };
+        this.campChest = new CampChest('camp_chest_init', this.hq.x + this.hq.width + 30, this.hq.y + 144);
         this.activeRangerHut = null;
         this.gridSize = 20;
 
@@ -2765,12 +2841,13 @@ class ReserveGame {
         this.activeHotbarIndex = 0;
         this.chunkManager = new ChunkManager(1000, 2);
         this.player = new Player(1000, 1060);
-        this.waterhole = new Waterhole(this.reserve.x + 500, this.reserve.y + 500);
-        this.dogJock = new DogJock(this.hq.x + 72, this.hq.y + 72);
+        this.dogJock = new DogJock(this.hq.x + 144, this.hq.y + 144);
         this.jockAssignedBuilding = 'hq'; // 'hq' or rangerHut.id
 
         this.droppedItems = [];
         this.plantedSaplings = [];
+        this.shrubs = [];
+        this.initShrubs();
         this.rangers = [];
         this.furnaces = [];
         this.braais = [];
@@ -3337,6 +3414,20 @@ class ReserveGame {
             });
         }
 
+        // Management Category Sidebar Triggers
+        const sidebarCategoryBtns = document.querySelectorAll('.sidebar-category-btn');
+        sidebarCategoryBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const category = btn.dataset.category;
+                this.openManagementModal(category);
+            });
+        });
+
+        const closeManagementBtn = document.getElementById('close-management-modal-btn');
+        if (closeManagementBtn) {
+            closeManagementBtn.addEventListener('click', () => this.closeManagementModal());
+        }
+
         const closeWorkbenchBtn = document.getElementById('close-workbench-btn');
         if (closeWorkbenchBtn) {
             closeWorkbenchBtn.addEventListener('click', () => this.closeWorkbenchModal());
@@ -3595,6 +3686,7 @@ class ReserveGame {
 
         if (foundRanger) {
             this.selectedRanger = foundRanger;
+            this.recordTutorialEvent('clickedWorker');
             this.openWorkerManagementModal(foundRanger);
             return;
         }
@@ -4497,6 +4589,7 @@ class ReserveGame {
                 `;
                 petCard.querySelector('button').addEventListener('click', () => {
                     this.jockAssignedBuilding = 'hq';
+                    this.recordTutorialEvent('assignedJobOrPet');
                     this.showNotification('Assigned Jock to Reserve HQ!');
                     this.updateHqModalUI();
                 });
@@ -4698,6 +4791,13 @@ class ReserveGame {
                 hiredData.assignedBuilding = chosenHousing;
                 hiredData.job = chosenJob;
 
+                if (chosenHousing === 'reserve_hq') {
+                    this.recordTutorialEvent('assignedWorkerHQ');
+                }
+                if (chosenJob) {
+                    this.recordTutorialEvent('assignedJobOrPet');
+                }
+
                 if (chosenBuffId && !hiredData.buff) {
                     const buffDef = WORKER_BUFF_OPTIONS.find(b => b.id === chosenBuffId);
                     if (buffDef) {
@@ -4706,7 +4806,6 @@ class ReserveGame {
                 }
 
                 this.syncRangersWithInfrastructure();
-                this.recordTutorialEvent('assignedWorkerJob');
                 this.showNotification(`Updated assignment for ${hiredData.name}!`);
                 this.closeWorkerManagementModal();
                 this.updateUI();
@@ -4977,6 +5076,45 @@ class ReserveGame {
         if (fuelCount) fuelCount.textContent = `${this.activeFurnace.fuelWood} / ${this.activeFurnace.maxFuel} Wood`;
         if (matCount) matCount.textContent = `${this.activeFurnace.rawStone} / ${this.activeFurnace.maxMaterial} Stone`;
         if (outputCount) outputCount.textContent = `${this.activeFurnace.processedStone} Processed Stone`;
+    }
+
+    // Half-Screen Management Modal System
+    openManagementModal(category = 'animals') {
+        this.player.isMovementLocked = true;
+        const modal = document.getElementById('management-modal');
+        const titleEl = document.getElementById('management-modal-title');
+
+        const titleMap = {
+            animals: '🦁 Marketplace Animals',
+            rangers: '🤠 Recruit Rangers',
+            building: '🔨 Crafting & Building',
+            upgrades: '🏗️ Reserve Upgrades'
+        };
+
+        if (titleEl) titleEl.textContent = titleMap[category] || '📋 Management';
+
+        const tabs = ['animals', 'rangers', 'building', 'upgrades'];
+        tabs.forEach(tab => {
+            const contentEl = document.getElementById(`management-modal-content-${tab}`);
+            if (contentEl) {
+                if (tab === category) {
+                    contentEl.classList.remove('hidden');
+                } else {
+                    contentEl.classList.add('hidden');
+                }
+            }
+        });
+
+        if (modal) {
+            modal.classList.remove('hidden');
+            this.updateUI();
+        }
+    }
+
+    closeManagementModal() {
+        this.player.isMovementLocked = false;
+        const modal = document.getElementById('management-modal');
+        if (modal) modal.classList.add('hidden');
     }
 
     // Workbench Modal System
@@ -5551,6 +5689,22 @@ class ReserveGame {
     }
 
     // Animal Ecosystem Engine
+    initShrubs() {
+        this.shrubs = [];
+        const seedCount = 60;
+        for (let i = 0; i < seedCount; i++) {
+            const sx = this.reserve.x + 30 + Math.random() * (this.reserve.width - 60);
+            const sy = this.reserve.y + 30 + Math.random() * (this.reserve.height - 60);
+
+            // Avoid spawning inside HQ or waterhole
+            const hqDist = Math.hypot(sx - (this.hq.x + this.hq.width / 2), sy - (this.hq.y + this.hq.height / 2));
+            const whDist = Math.hypot(sx - this.waterhole.x, sy - this.waterhole.y);
+            if (hqDist > 160 && whDist > 120) {
+                this.shrubs.push(new Shrub(`shrub_${i}`, sx, sy));
+            }
+        }
+    }
+
     initVisualAnimals() {
         this.renderedAnimals = [];
     }
@@ -6093,6 +6247,7 @@ class ReserveGame {
                             this.showNotification('Backpack Full!');
                         }
                     } else {
+                        this.closeManagementModal();
                         this.startPlacementMode(itemDef);
                     }
                 });
@@ -6398,6 +6553,24 @@ class ReserveGame {
         this.ctx.fillStyle = '#4a6830';
         this.ctx.fillRect(this.reserve.x, this.reserve.y, this.reserve.width, this.reserve.height);
 
+        // Organic smoothly blended grass patches across reserve terrain
+        this.ctx.save();
+        const grassColors = ['#527835', '#415e2a', '#365222', '#5b823b', '#48682e'];
+        const patchCount = 28;
+        for (let i = 0; i < patchCount; i++) {
+            const px = this.reserve.x + 80 + (i * 317) % (this.reserve.width - 160);
+            const py = this.reserve.y + 80 + (i * 223) % (this.reserve.height - 160);
+            const rx = 60 + (i * 17) % 50;
+            const ry = 40 + (i * 13) % 40;
+            const rot = (i * 0.4);
+
+            this.ctx.fillStyle = grassColors[i % grassColors.length];
+            this.ctx.beginPath();
+            this.ctx.ellipse(px, py, rx, ry, rot, 0, Math.PI * 2);
+            this.ctx.fill();
+        }
+        this.ctx.restore();
+
         // Reserve Perimeter Border Line
         this.ctx.strokeStyle = '#3d2b17';
         this.ctx.lineWidth = 4;
@@ -6432,10 +6605,13 @@ class ReserveGame {
         // 1. Savannah Biome Background
         this.renderSavannahBackground(viewBounds);
 
+        // Small shrub entities with subtle sine-wave sway animation (wind effect)
+        this.shrubs.forEach(shrub => shrub.render(this.ctx));
+
         // Waterhole
         this.waterhole.render(this.ctx, this.images);
 
-        // Reserve HQ (3x3 grid size: 144x144px)
+        // Reserve HQ (Scaled structure)
         const hqImg = this.images['reserve-hq.png'];
         if (hqImg && hqImg.complete) {
             this.ctx.drawImage(hqImg, this.hq.x, this.hq.y, this.hq.width, this.hq.height);
