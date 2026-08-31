@@ -12,12 +12,6 @@
         <div class="main-menu-card">
             <h1 class="main-menu-title">🌍 SERENGETI RESERVE</h1>
             <p class="main-menu-subtitle">African Wildlife Reserve Management RPG</p>
-            <div class="creative-mode-toggle" style="display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.9rem; color: var(--accent-gold); margin-top: 4px;">
-                <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
-                    <input type="checkbox" id="creative-mode-checkbox" style="width: 16px; height: 16px; accent-color: var(--accent-gold); cursor: pointer;">
-                    <strong>🛠️ Creative Mode (Developer Mode)</strong>
-                </label>
-            </div>
             <div class="main-menu-actions">
                 <button id="start-new-game-btn" class="menu-btn primary-menu-btn"><svg class="icon-svg" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg> Start New Game</button>
                 <button id="open-load-menu-btn" class="menu-btn secondary-menu-btn"><svg class="icon-svg" viewBox="0 0 24 24"><path fill="currentColor" d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg> Load Game</button>
@@ -169,9 +163,6 @@
                     <label style="font-weight: bold; color: var(--accent-gold); display: block; margin-bottom: 6px;">✨ Assign Permanent Buff:</label>
                     <select id="worker-buff-select" style="width: 100%; padding: 8px; border-radius: 6px; background: #1a252c; color: var(--text-main); border: 1px solid var(--border-color);"></select>
                 </div>
-                <button id="save-worker-assignment-btn" class="action-btn positive-btn" style="padding: 10px; font-size: 1rem; margin-top: 6px;">
-                    💾 Save Assignment
-                </button>
             </div>
         </div>
     </div>
@@ -357,13 +348,13 @@
                 📋 MENU
             </div>
             <div class="sidebar-content">
+                <button class="sidebar-category-btn" data-category="rangers">
+                    <span class="category-icon">🤠</span>
+                    <span class="category-title">Workers</span>
+                </button>
                 <button class="sidebar-category-btn" data-category="animals">
                     <span class="category-icon">🦁</span>
                     <span class="category-title">Animals</span>
-                </button>
-                <button class="sidebar-category-btn" data-category="rangers">
-                    <span class="category-icon">🤠</span>
-                    <span class="category-title">Rangers</span>
                 </button>
                 <button class="sidebar-category-btn" data-category="building">
                     <span class="category-icon">🔨</span>
@@ -577,6 +568,15 @@
         </div>
     </div>
 
+    <!-- Loading Screen Overlay -->
+    <div id="loading-overlay" class="modal-backdrop hidden">
+        <div class="modal-card story-card" style="text-align: center; padding: 30px 20px;">
+            <div class="loading-spinner"></div>
+            <h3 style="color: var(--accent-gold); font-size: 1.3rem; margin-top: 15px;">🌍 Generating Serengeti Reserve...</h3>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 8px;">Preparing wildlife habitat, resources, and terrain...</p>
+        </div>
+    </div>
+
     <!-- Intro Story Modal -->
     <div id="intro-story-modal" class="modal-backdrop hidden">
         <div class="modal-card story-card">
@@ -585,7 +585,7 @@
             </div>
             <div class="modal-body" style="text-align: center;">
                 <p style="line-height: 1.6; font-size: 1.05rem; color: #e2e8f0; margin-bottom: 15px;">
-                    "Welcome to the wild. You've inherited a patch of untouched land. Your only companion is Jock, a loyal camp dog with a golden coat and highly alert, pointy ears. It's time to build your reserve."
+                    "Welcome to the Serengeti Reserve. Your mission in Southern Africa is to build the ultimate sanctuary for wildlife, tourists, and your dedicated rangers. Manage resources carefully and expand your borders."
                 </p>
                 <button id="start-story-btn" class="action-btn positive-btn" style="padding: 12px; font-size: 1.05rem;">
                     🐾 Begin Building Reserve
