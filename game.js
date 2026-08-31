@@ -2738,6 +2738,12 @@ class ReserveGame {
 
         // Fog of War & Minimap Systems
         this.revealedChunks = new Set();
+        // Reveal initial 4x4 chunk area surrounding Reserve HQ
+        for (let cx = -1; cx <= 2; cx++) {
+            for (let cy = -1; cy <= 2; cy++) {
+                this.revealedChunks.add(`${cx},${cy}`);
+            }
+        }
         this.fogSightRadius = 450;
         this.minimapZoom = 1.0;
         this.minMinimapZoom = 0.5;
@@ -2758,7 +2764,7 @@ class ReserveGame {
         this.inventory.addItem('stone', 15, 'Stone');
         this.activeHotbarIndex = 0;
         this.chunkManager = new ChunkManager(1000, 2);
-        this.player = new Player(250, 250);
+        this.player = new Player(1000, 1060);
         this.waterhole = new Waterhole(this.reserve.x + 500, this.reserve.y + 500);
         this.dogJock = new DogJock(this.hq.x + 72, this.hq.y + 72);
         this.jockAssignedBuilding = 'hq'; // 'hq' or rangerHut.id
@@ -2898,9 +2904,9 @@ class ReserveGame {
             this.keys[k] = false;
         }
 
-        // Teleport coordinates to spawn point (250, 250)
-        this.player.x = 250;
-        this.player.y = 250;
+        // Teleport coordinates to spawn point (1000, 1060)
+        this.player.x = 1000;
+        this.player.y = 1060;
 
         this.showNotification("You collapsed! Items dropped on ground and respawned at spawn point.");
         this.updateUI();
@@ -2996,7 +3002,7 @@ class ReserveGame {
             if (this.audioManager) {
                 this.audioManager.startAudio();
             }
-            if (e.target.closest('button, .action-btn, .hotbar-slot, .inventory-slot, .close-btn, .sidebar-strip-handle, summary, .crate-choice-card, .menu-btn')) {
+            if (e.target.closest('button, .action-btn, .hotbar-slot, .inventory-slot, .close-btn, .crate-choice-card, .menu-btn')) {
                 playProceduralSound('click');
             }
         });
@@ -5843,21 +5849,19 @@ class ReserveGame {
     }
 
     getNightDarknessAlpha() {
-        const t = this.timeElapsedInDay; // 0 to 300s
+        const t = this.timeElapsedInDay; // 0 to 300s (Day starts at 06:00 AM = 0s)
         const maxAlpha = 0.85;
 
-        if (t >= 137.5 && t < 162.5) {
-            // Dusk (17:00 to 19:00)
-            return ((t - 137.5) / 25) * maxAlpha;
-        } else if (t >= 162.5 && t < 287.5) {
-            // Full night (19:00 to 05:00)
+        // 0 to 150s: 06:00 to 18:00 (Daylight)
+        // 150 to 168.75s: 18:00 to 19:30 (Dusk)
+        // 168.75 to 281.25s: 19:30 to 04:30 (Full Night)
+        // 281.25 to 300s: 04:30 to 06:00 (Dawn)
+        if (t >= 150 && t < 168.75) {
+            return ((t - 150) / 18.75) * maxAlpha;
+        } else if (t >= 168.75 && t < 281.25) {
             return maxAlpha;
-        } else if (t >= 287.5 && t <= 300) {
-            // Dawn part 1 (05:00 to 06:00)
-            return maxAlpha - ((t - 287.5) / 25) * maxAlpha;
-        } else if (t >= 0 && t < 12.5) {
-            // Dawn part 2 (06:00 to 07:00)
-            return (maxAlpha * 0.5) - (t / 12.5) * (maxAlpha * 0.5);
+        } else if (t >= 281.25 && t <= 300) {
+            return maxAlpha * (1 - (t - 281.25) / 18.75);
         } else {
             return 0;
         }
@@ -6026,41 +6030,72 @@ class ReserveGame {
         if (!grid) return;
         grid.innerHTML = '';
 
-        BUILDINGS_DATA.forEach(bDef => {
+        const allCraftables = [...BUILDINGS_DATA, ...WORKBENCH_CRAFTABLES];
+
+        allCraftables.forEach(itemDef => {
             const woodCount = this.inventory.getItemCount('wood');
             const stoneCount = this.inventory.getItemCount('stone');
             const pStoneCount = this.inventory.getItemCount('processedStone');
+            const saplingCount = this.inventory.getItemCount('sapling');
+            const scrapsCount = this.inventory.getItemCount('scraps');
 
             const canAfford = this.state.isCreativeMode || (
-                              woodCount >= bDef.woodCost &&
-                              stoneCount >= bDef.stoneCost &&
-                              pStoneCost >= (bDef.processedStoneCost || 0));
+                              woodCount >= (itemDef.woodCost || 0) &&
+                              stoneCount >= (itemDef.stoneCost || 0) &&
+                              pStoneCount >= (itemDef.processedStoneCost || 0) &&
+                              saplingCount >= (itemDef.saplingCost || 0) &&
+                              scrapsCount >= (itemDef.scrapsCost || 0));
 
             const card = document.createElement('div');
             card.className = 'item-card';
 
+            const iconHTML = itemDef.image
+                ? `<img src="${itemDef.image}" class="card-thumb-img" alt="${itemDef.name}">`
+                : itemDef.icon;
+
             card.innerHTML = `
                 <div class="card-header">
-                    <div class="card-icon">${bDef.icon}</div>
+                    <div class="card-icon">${iconHTML}</div>
                     <div class="card-title-group">
-                        <h4>${bDef.name}</h4>
-                        <span class="card-sub">Structure</span>
+                        <h4>${itemDef.name}</h4>
+                        <span class="card-sub">${itemDef.type === 'item' ? 'Tool / Item' : 'Structure'}</span>
                     </div>
                 </div>
-                <p class="card-body">${bDef.description}</p>
+                <p class="card-body">${itemDef.description}</p>
                 <div class="card-stats">
-                    <span class="badge">Wood: ${bDef.woodCost}</span>
-                    <span class="badge">Stone: ${bDef.stoneCost}</span>
-                    ${bDef.processedStoneCost ? `<span class="badge">P-Stone: ${bDef.processedStoneCost}</span>` : ''}
+                    ${itemDef.woodCost ? `<span class="badge">Wood: ${itemDef.woodCost}</span>` : ''}
+                    ${itemDef.stoneCost ? `<span class="badge">Stone: ${itemDef.stoneCost}</span>` : ''}
+                    ${itemDef.processedStoneCost ? `<span class="badge">P-Stone: ${itemDef.processedStoneCost}</span>` : ''}
+                    ${itemDef.saplingCost ? `<span class="badge">Sapling: ${itemDef.saplingCost}</span>` : ''}
+                    ${itemDef.scrapsCost ? `<span class="badge">Scraps: ${itemDef.scrapsCost}</span>` : ''}
                 </div>
                 <button class="action-btn" ${!canAfford ? 'disabled' : ''}>
-                    ${!canAfford ? 'Insufficient Resources' : `Place ${bDef.name}`}
+                    ${!canAfford ? 'Insufficient Resources' : (itemDef.type === 'item' ? `Craft ${itemDef.name}` : `Place ${itemDef.name}`)}
                 </button>
             `;
 
             const btn = card.querySelector('.action-btn');
             if (btn && canAfford) {
-                btn.addEventListener('click', () => this.startPlacementMode(bDef));
+                btn.addEventListener('click', () => {
+                    if (itemDef.type === 'item') {
+                        if (this.inventory.canAddItem(itemDef.id, 1)) {
+                            if (!this.state.isCreativeMode) {
+                                this.inventory.consumeItem('wood', itemDef.woodCost || 0);
+                                this.inventory.consumeItem('stone', itemDef.stoneCost || 0);
+                                this.inventory.consumeItem('processedStone', itemDef.processedStoneCost || 0);
+                                if (itemDef.saplingCost) this.inventory.consumeItem('sapling', itemDef.saplingCost);
+                                if (itemDef.scrapsCost) this.inventory.consumeItem('scraps', itemDef.scrapsCost);
+                            }
+                            this.inventory.addItem(itemDef.id, 1);
+                            this.showNotification(`Crafted 1x ${itemDef.name}!`);
+                            this.updateUI();
+                        } else {
+                            this.showNotification('Backpack Full!');
+                        }
+                    } else {
+                        this.startPlacementMode(itemDef);
+                    }
+                });
             }
 
             grid.appendChild(card);
@@ -6208,32 +6243,43 @@ class ReserveGame {
         ctx.arc(w / 2, h / 2, w / 2, 0, Math.PI * 2);
         ctx.clip();
 
-        // Minimap Background
-        ctx.fillStyle = '#0a100d';
-        ctx.fillRect(0, 0, w, h);
-
         const centerX = w / 2;
         const centerY = h / 2;
-        const baseScale = 0.035;
+        const baseScale = 0.045;
         const scale = baseScale * this.minimapZoom;
 
-        // Apply Context Translation and Scaling centered on Camera position
         const camX = this.camera ? this.camera.x : (this.player ? this.player.x : 1000);
         const camY = this.camera ? this.camera.y : (this.player ? this.player.y : 1000);
+
+        // Minimap Savanna Background
+        ctx.fillStyle = '#5c4a2a';
+        ctx.fillRect(0, 0, w, h);
 
         ctx.save();
         ctx.translate(centerX, centerY);
         ctx.scale(scale, scale);
         ctx.translate(-camX, -camY);
 
-        // Render Reserve Enclosure Bounds in World Coordinates
-        ctx.fillStyle = 'rgba(46, 204, 113, 0.15)';
+        // Render Reserve Enclosure Bounds Ground on Minimap
+        ctx.fillStyle = '#4a6830';
         ctx.fillRect(this.reserve.x, this.reserve.y, this.reserve.width, this.reserve.height);
         ctx.strokeStyle = '#f39c12';
-        ctx.lineWidth = 2 / scale;
+        ctx.lineWidth = 3 / scale;
         ctx.strokeRect(this.reserve.x, this.reserve.y, this.reserve.width, this.reserve.height);
 
-        // Render Unlooted Forgotten Ranger Chests inside revealed Fog of War chunks as bright gold dots
+        // Render Waterhole on Minimap
+        if (this.waterhole) {
+            ctx.fillStyle = '#2980b9';
+            ctx.beginPath();
+            ctx.ellipse(this.waterhole.x, this.waterhole.y, this.waterhole.radiusX, this.waterhole.radiusY, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Render Reserve HQ on Minimap
+        ctx.fillStyle = '#d35400';
+        ctx.fillRect(this.hq.x, this.hq.y, this.hq.width, this.hq.height);
+
+        // Render Unlooted Forgotten Ranger Chests
         const crates = this.chunkManager.getAllCrates();
         crates.forEach(crate => {
             if (crate.looted) return;
@@ -6242,40 +6288,51 @@ class ReserveGame {
             if (this.revealedChunks.has(`${cx},${cy}`)) {
                 ctx.fillStyle = '#ffd700'; // Bright Gold
                 ctx.beginPath();
-                ctx.arc(crate.x, crate.y, 6 / scale, 0, Math.PI * 2);
+                ctx.arc(crate.x, crate.y, 8 / scale, 0, Math.PI * 2);
                 ctx.fill();
-                ctx.strokeStyle = '#ffffff';
-                ctx.lineWidth = 1.5 / scale;
-                ctx.stroke();
             }
         });
 
-        // Render Jock on the minimap
+        // Render Animals on Minimap
+        (this.renderedAnimals || []).forEach(a => {
+            ctx.fillStyle = '#f1c40f'; // Yellow dot
+            ctx.beginPath();
+            ctx.arc(a.x, a.y, 6 / scale, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        // Render Jock on Minimap
         if (this.dogJock) {
             ctx.fillStyle = '#ff7700'; // Bright Orange/Gold
             ctx.beginPath();
-            ctx.arc(this.dogJock.x, this.dogJock.y, 7 / scale, 0, Math.PI * 2);
+            ctx.arc(this.dogJock.x, this.dogJock.y, 8 / scale, 0, Math.PI * 2);
             ctx.fill();
             ctx.strokeStyle = '#ffffff';
             ctx.lineWidth = 2 / scale;
             ctx.stroke();
-
-            ctx.fillStyle = '#ffff00';
-            ctx.beginPath();
-            ctx.arc(this.dogJock.x, this.dogJock.y, 3 / scale, 0, Math.PI * 2);
-            ctx.fill();
         }
 
-        // Render Rangers on minimap
+        // Render Rangers on Minimap
         (this.rangers || []).forEach(r => {
-            ctx.fillStyle = '#2ecc71'; // Bright Green for Rangers
+            ctx.fillStyle = '#2ecc71'; // Bright Green
             ctx.beginPath();
-            ctx.arc(r.x, r.y, 6 / scale, 0, Math.PI * 2);
+            ctx.arc(r.x, r.y, 7 / scale, 0, Math.PI * 2);
             ctx.fill();
             ctx.strokeStyle = '#ffffff';
             ctx.lineWidth = 1.5 / scale;
             ctx.stroke();
         });
+
+        // Render Player on Minimap
+        if (this.player) {
+            ctx.fillStyle = '#3498db'; // Bright Blue
+            ctx.beginPath();
+            ctx.arc(this.player.x, this.player.y, 9 / scale, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2 / scale;
+            ctx.stroke();
+        }
 
         // Draw Overseer Camera Viewport Rectangle on Minimap
         if (this.canvas) {
@@ -6290,8 +6347,6 @@ class ReserveGame {
             ctx.strokeStyle = '#00ffff'; // Cyan highlight rectangle for viewport
             ctx.lineWidth = 2.5 / scale;
             ctx.strokeRect(viewMinX, viewMinY, viewWorldW, viewWorldH);
-            ctx.fillStyle = 'rgba(0, 255, 255, 0.1)';
-            ctx.fillRect(viewMinX, viewMinY, viewWorldW, viewWorldH);
         }
 
         ctx.restore(); // Restore context transformation back to screen coordinates
@@ -6306,7 +6361,6 @@ class ReserveGame {
         const distFromCenter = Math.hypot(hqScreenX - centerX, hqScreenY - centerY);
 
         if (distFromCenter > radiusMap) {
-            // Reserve HQ is off-screen on the minimap, draw edge directional arrow
             const angle = Math.atan2(hqScreenY - centerY, hqScreenX - centerX);
             const arrowX = centerX + Math.cos(angle) * radiusMap;
             const arrowY = centerY + Math.sin(angle) * radiusMap;
@@ -6325,100 +6379,28 @@ class ReserveGame {
             ctx.fill();
 
             ctx.restore();
-        } else {
-            // Reserve HQ is visible on minimap
-            ctx.fillStyle = '#e67e22';
-            ctx.fillRect(hqScreenX - 4, hqScreenY - 4, 8, 8);
         }
 
         ctx.restore();
     }
 
     renderSavannahBackground(viewBounds) {
-        // Base ground fill
-        this.ctx.fillStyle = '#7a683a'; // Natural savannah dry grass base
+        // Base ground fill for visible viewport
+        this.ctx.fillStyle = '#6b5934'; // Natural savanna dry grass base
         this.ctx.fillRect(
-            viewBounds.minX - 50,
-            viewBounds.minY - 50,
-            (viewBounds.maxX - viewBounds.minX) + 100,
-            (viewBounds.maxY - viewBounds.minY) + 100
+            viewBounds.minX - 100,
+            viewBounds.minY - 100,
+            (viewBounds.maxX - viewBounds.minX) + 200,
+            (viewBounds.maxY - viewBounds.minY) + 200
         );
 
         // Reserve interior natural lush grass fill
-        this.ctx.fillStyle = '#5c733a';
+        this.ctx.fillStyle = '#4a6830';
         this.ctx.fillRect(this.reserve.x, this.reserve.y, this.reserve.width, this.reserve.height);
 
-        // Smooth noise-based transitional terrain patches
-        const patchSize = 120;
-        const minPatchX = Math.floor(viewBounds.minX / patchSize) - 1;
-        const maxPatchX = Math.ceil(viewBounds.maxX / patchSize) + 1;
-        const minPatchY = Math.floor(viewBounds.minY / patchSize) - 1;
-        const maxPatchY = Math.ceil(viewBounds.maxY / patchSize) + 1;
-
-        const time = Date.now() * 0.002;
-
-        for (let px = minPatchX; px <= maxPatchX; px++) {
-            for (let py = minPatchY; py <= maxPatchY; py++) {
-                const worldX = px * patchSize;
-                const worldY = py * patchSize;
-                const seed = hashCoordinates(px, py);
-                const randVal = seededRandom(seed);
-                const randVal2 = seededRandom(seed + 1);
-
-                const patchCenterX = worldX + (randVal - 0.5) * 40 + patchSize / 2;
-                const patchCenterY = worldY + (randVal2 - 0.5) * 40 + patchSize / 2;
-                const patchRadius = 60 + randVal * 50;
-
-                const inReserve = (
-                    patchCenterX >= this.reserve.x && patchCenterX <= this.reserve.x + this.reserve.width &&
-                    patchCenterY >= this.reserve.y && patchCenterY <= this.reserve.y + this.reserve.height
-                );
-
-                // Organic radial gradient patch
-                const grad = this.ctx.createRadialGradient(
-                    patchCenterX, patchCenterY, 5,
-                    patchCenterX, patchCenterY, patchRadius
-                );
-
-                if (inReserve) {
-                    const color = randVal < 0.5 ? 'rgba(76, 99, 49, 0.6)' : 'rgba(122, 122, 64, 0.5)';
-                    grad.addColorStop(0, color);
-                    grad.addColorStop(1, 'rgba(92, 115, 58, 0)');
-                } else {
-                    const color = randVal < 0.4 ? 'rgba(143, 119, 72, 0.65)' : (randVal < 0.7 ? 'rgba(74, 94, 47, 0.55)' : 'rgba(105, 85, 45, 0.6)');
-                    grad.addColorStop(0, color);
-                    grad.addColorStop(1, 'rgba(122, 104, 58, 0)');
-                }
-
-                this.ctx.fillStyle = grad;
-                this.ctx.beginPath();
-                this.ctx.arc(patchCenterX, patchCenterY, patchRadius, 0, Math.PI * 2);
-                this.ctx.fill();
-
-                // Add scattered grass details
-                if (randVal2 < 0.6) {
-                    const tuftX = patchCenterX + (randVal - 0.5) * 40;
-                    const tuftY = patchCenterY + (randVal2 - 0.5) * 40;
-                    const sway = Math.sin(time + seed) * 3;
-
-                    this.ctx.strokeStyle = randVal < 0.5 ? '#3b5220' : '#9e8736';
-                    this.ctx.lineWidth = 1.5;
-
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(tuftX, tuftY);
-                    this.ctx.quadraticCurveTo(tuftX - 4 + sway, tuftY - 6, tuftX - 6 + sway, tuftY - 10);
-                    this.ctx.moveTo(tuftX, tuftY);
-                    this.ctx.quadraticCurveTo(tuftX + sway, tuftY - 8, tuftX + sway, tuftY - 12);
-                    this.ctx.moveTo(tuftX, tuftY);
-                    this.ctx.quadraticCurveTo(tuftX + 4 + sway, tuftY - 6, tuftX + 6 + sway, tuftY - 9);
-                    this.ctx.stroke();
-                }
-            }
-        }
-
         // Reserve Perimeter Border Line
-        this.ctx.strokeStyle = 'rgba(107, 62, 16, 0.4)';
-        this.ctx.lineWidth = 3;
+        this.ctx.strokeStyle = '#3d2b17';
+        this.ctx.lineWidth = 4;
         this.ctx.strokeRect(this.reserve.x, this.reserve.y, this.reserve.width, this.reserve.height);
     }
 
@@ -6723,52 +6705,56 @@ class ReserveGame {
             lCtx.globalCompositeOperation = 'destination-out';
 
             const drawLightPool = (worldX, worldY, radius) => {
-                const screenX = worldX - camX;
-                const screenY = worldY - camY;
+                const screenX = (worldX - camX) * scale + screenW / 2;
+                const screenY = (worldY - camY) * scale + screenH / 2;
+                const screenRadius = radius * scale;
 
-                if (screenX + radius < 0 || screenX - radius > screenW ||
-                    screenY + radius < 0 || screenY - radius > screenH) return;
+                if (screenX + screenRadius < 0 || screenX - screenRadius > screenW ||
+                    screenY + screenRadius < 0 || screenY - screenRadius > screenH) return;
 
-                const grad = lCtx.createRadialGradient(screenX, screenY, radius * 0.1, screenX, screenY, radius);
+                const grad = lCtx.createRadialGradient(screenX, screenY, screenRadius * 0.1, screenX, screenY, screenRadius);
                 grad.addColorStop(0, 'rgba(0, 0, 0, 1)');
                 grad.addColorStop(0.7, 'rgba(0, 0, 0, 0.6)');
                 grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
 
                 lCtx.fillStyle = grad;
                 lCtx.beginPath();
-                lCtx.arc(screenX, screenY, radius, 0, Math.PI * 2);
+                lCtx.arc(screenX, screenY, screenRadius, 0, Math.PI * 2);
                 lCtx.fill();
             };
 
-            // Rangers & Overseer camera light pools
-            this.rangers.forEach(r => drawLightPool(r.x, r.y, 140));
-            drawLightPool(this.camera.x, this.camera.y, 220);
+            // Rangers, Player & Overseer camera light pools
+            this.rangers.forEach(r => drawLightPool(r.x, r.y, 180));
+            if (this.player) drawLightPool(this.player.x, this.player.y, 220);
+            drawLightPool(this.camera.x, this.camera.y, 260);
 
             // Placed buildings light pools (Torches, Furnaces, Braais)
             this.state.placedBuildings.forEach(b => {
                 if (b.type === 'torch') {
                     const flick = Math.sin(performance.now() / 150) * 8;
-                    drawLightPool(b.x, b.y, 180 + flick);
+                    drawLightPool(b.x, b.y, 200 + flick);
                 } else if (b.type === 'furnace') {
                     const furnaceObj = this.furnaces.find(f => f.id === b.id);
                     if (furnaceObj && furnaceObj.isSmelting) {
-                        drawLightPool(b.x, b.y, 150);
+                        drawLightPool(b.x, b.y, 180);
                     } else {
-                        drawLightPool(b.x, b.y, 70);
+                        drawLightPool(b.x, b.y, 90);
                     }
                 } else if (b.type === 'braai') {
                     const braaiObj = this.braais.find(br => br.id === b.id);
                     if (braaiObj && braaiObj.isCooking) {
-                        drawLightPool(b.x, b.y, 150);
+                        drawLightPool(b.x, b.y, 180);
                     } else {
-                        drawLightPool(b.x, b.y, 70);
+                        drawLightPool(b.x, b.y, 90);
                     }
                 }
             });
 
             lCtx.globalCompositeOperation = 'source-over';
 
-            this.ctx.drawImage(this.lightingCanvas, camX, camY);
+            const screenWorldW = screenW / scale;
+            const screenWorldH = screenH / scale;
+            this.ctx.drawImage(this.lightingCanvas, camX - screenWorldW / 2, camY - screenWorldH / 2, screenWorldW, screenWorldH);
         }
 
         // 10. Fog of War Overlay (Pitch Black Outside Revealed Radius & Reserve)
