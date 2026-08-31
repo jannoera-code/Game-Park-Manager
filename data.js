@@ -256,7 +256,7 @@ const WORKBENCH_CRAFTABLES = [
         stoneCost: 0,
         processedStoneCost: 0,
         width: 60,
-        height: 60,
+        height: 20,
         rotation: 0,
         description: 'Basic wooden perimeter fence segment.'
     },

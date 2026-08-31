@@ -5160,10 +5160,15 @@ class ReserveGame {
         const grid = new Array(cols * rows).fill(false);
 
         fences.forEach(f => {
-            const fMinX = f.x - f.width / 2;
-            const fMaxX = f.x + f.width / 2;
-            const fMinY = f.y - f.height / 2;
-            const fMaxY = f.y + f.height / 2;
+            const rot = f.rotation || 0;
+            const isRotated = (rot === 90 || rot === 270);
+            const fw = isRotated ? f.height : f.width;
+            const fh = isRotated ? f.width : f.height;
+
+            const fMinX = f.x - fw / 2;
+            const fMaxX = f.x + fw / 2;
+            const fMinY = f.y - fh / 2;
+            const fMaxY = f.y + fh / 2;
 
             const startCol = Math.max(0, Math.floor((fMinX - minX) / CELL));
             const endCol = Math.min(cols - 1, Math.floor((fMaxX - minX) / CELL));
@@ -6821,8 +6826,17 @@ class ReserveGame {
             this.ctx.lineWidth = 2;
             this.ctx.strokeRect(-bDef.width / 2, -bDef.height / 2, bDef.width, bDef.height);
 
+            // Render sprite image preview inside blueprint box if asset exists
+            const imgFileName = bDef.image ? bDef.image.replace('assets/', '') : null;
+            const bImg = imgFileName ? this.images[imgFileName] : null;
+            if (bImg && bImg.complete) {
+                this.ctx.globalAlpha = 0.7;
+                this.ctx.drawImage(bImg, -bDef.width / 2, -bDef.height / 2, bDef.width, bDef.height);
+                this.ctx.globalAlpha = 1.0;
+            }
+
             this.ctx.fillStyle = '#ffffff';
-            this.ctx.font = 'bold 14px sans-serif';
+            this.ctx.font = 'bold 12px sans-serif';
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
             this.ctx.fillText(bDef.name, 0, 0);
@@ -7003,6 +7017,15 @@ class ReserveGame {
                 fCtx.fill();
             }
         });
+
+        // Clear fog in a radius around Scout Dog Jock
+        if (this.dogJock) {
+            const pos = worldToScreen(this.dogJock.x, this.dogJock.y);
+            const radius = 200 * scale;
+            fCtx.beginPath();
+            fCtx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+            fCtx.fill();
+        }
 
         fCtx.globalCompositeOperation = 'source-over';
 
